@@ -70,7 +70,7 @@ if __name__ == '__main__':
                                # 'hopper.nersc.gov'          : 'pbs'}
     cfg['bundle_unsupported'] = {'supermic.cct-lsu.xsede.org': { 
                                     'sched': 'pbs',
-                                    'fconf': 'conf/lsu.supermic.json'
+                                    'fconf': 'bundle_resources/lsu.supermic.json'
                                 }}
     cfg['remote_mongodb']     = 'mongodb://%s:%d' % (cfg['remote_mongodb_dns'], 
                                                      cfg['remote_mongodb_port'])
