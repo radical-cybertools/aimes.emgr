@@ -83,9 +83,9 @@ if __name__ == '__main__':
     queue = Queue.Queue()
 
     # Derive randomized run sequence and populate the default queue.
-    for run in derive_run_sequence(SCALES, BINDINGS, TIME_DISTRIB, ITERATIONS,
-                                   CORES):
-        queue.put(run)
+    for run_cfg in derive_run_sequence(SCALES, BINDINGS, TIME_DISTRIB, ITERATIONS,
+                                       CORES):
+        queue.put(run_cfg)
 
     # Execute the queued runs.
     tracker = 0
@@ -94,9 +94,9 @@ if __name__ == '__main__':
 
         tracker += 1
 
-        run = queue.get()
+        run_cfg = queue.get()
 
-        aimes.emgr.initialize_run_environment(cfg, run, tracker, queue.qsize())
+        run = aimes.emgr.initialize_run_environment(cfg, run_cfg, tracker, queue.qsize())
         aimes.emgr.execute_run(cfg, run)
         aimes.emgr.finalize_run_environment(cfg, run)
 
@@ -104,7 +104,7 @@ if __name__ == '__main__':
 
             # reschedule once more
             run['rerun'] += 1
-            queue.put(run)
+            queue.put(run_cfg)
 
 
 # -----------------------------------------------------------------------------

@@ -47,7 +47,7 @@ __credits__ = ["Andre Merzky"]
 # -----------------------------------------------------------------------------
 # SETTING UP
 # -----------------------------------------------------------------------------
-def initialize_run_environment(cfg, run, tracker, q_qsize):
+def create_run_environment(cfg, run_cfg, tracker, q_qsize):
     '''Pass
     '''
 
