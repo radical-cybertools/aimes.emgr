@@ -755,7 +755,7 @@ def log_bundle(run, resources):
 
 
 # -----------------------------------------------------------------------------
-def log_execution_stategy(run, strategy):
+def log_execution_stategy(cfg, run, strategy):
     '''Pass.
     '''
 
@@ -767,11 +767,20 @@ def log_execution_stategy(run, strategy):
 
     print >> f, "Configurations:"
 
-    print >> f, "\tTarget resource for early binding : %s" %\
-        cfg['bundle_resource']
+    if cfg['bundle_resource']:
+        print "I am here: %s" % cfg['bundle_resource']
+        print >> f, "\tTarget resource for early binding : %s" %\
+            cfg['bundle_resource']
 
-    print >> f, "\tTarget resources for late binding : %s" %\
-        ', '.join(map(str, cfg['bundle_resources'].keys()))
+        print >> f, "\tTarget resources for late binding : %s" %\
+            ', '.join(map(str, cfg['bundle_resources'].keys()))
+
+    if cfg['bundle_unsupported']:
+        print >> f, "\tTarget resource for early binding : %s" %\
+            cfg['bundle_unsupported']
+
+        print >> f, "\tTarget resources for late binding : %s" %\
+            ', '.join(map(str, cfg['bundle_unsupported'].keys()))
 
     print >> f, "\tType of task-to-resource binding  : %s" %\
         run['binding']
@@ -1239,7 +1248,7 @@ def execute_run(cfg, run):
         # Define execution strategy.
         strategy = derive_execution_stategy(cfg, workflow, resources, run)
 
-        log_execution_stategy(run, strategy)
+        log_execution_stategy(cfg, run, strategy)
 
         # PILOT MANAGER
         # ------------------------------------------------------------------
