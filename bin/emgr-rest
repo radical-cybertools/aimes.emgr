@@ -1,0 +1,124 @@
+
+import os
+import bottle 
+
+import radical.utils as ru
+
+
+# ------------------------------------------------------------------------------
+#
+# read configuration
+#
+config = ru.read_json('config.json')
+data   = config["path"]
+
+# make sure the data path exists
+os.system('mkdir -p %s' % data)
+
+
+# ------------------------------------------------------------------------------
+#
+# list all known executions
+#
+@bottle.route('/executions/')
+def executions_list():
+
+    paths = os.listdir(data)
+
+    return {"success" : True  , 
+            "paths"   : paths }
+    
+
+# ------------------------------------------------------------------------------
+#
+# get details information on a specific execution
+#
+@bottle.route('/executions/<eid>', method='GET')
+def execution_show(eid=None):
+
+    if not eid:
+        return {"success" : False, 
+                "eid"     : eid,
+                "error"   : "missing execution id"}
+    
+    # look for data in data/<eid>/
+    if not os.path.exists ('%s/%s/' % (data, eid)):
+        return {"success" : False, 
+                "eid"     : eid,
+                "error"   : "execution id %s does not exist" % eid}
+
+    try:
+        with open('%s/%s/data' % (data, eid)) as f:
+            out = f.read()
+    except Exception as e:
+        return {"success" : False, 
+                "eid"     : eid,
+                "error"   : "Exception: %s" % e}
+
+    bottle.response.content_type = 'application/json'
+    return {"success" : True, 
+            "eid"     : eid,
+            "result"  : out}
+    
+
+# ------------------------------------------------------------------------------
+#
+# delete a specific execution
+#
+@bottle.route('/executions/<eid>', method='DELETE' )
+def execution_delete(eid=None):
+
+    if not eid:
+        return {"success" : False, 
+                "eid"     : None,
+                "error"   : "missing execution id"}
+    
+    # remove executions from tree
+    os.system ('rm    %s/%s/*' % (data, eid))
+    os.system ('rmdir %s/%s/'  % (data, eid))
+
+    return {"success" : True, 
+            "eid"     : eid,
+            "result"  : "execution %s deleted" % eid}
+            
+    
+# ------------------------------------------------------------------------------
+#
+# run a specific execution
+#
+@bottle.route('/executions/', method='PUT')
+def execution_run():
+
+    eid = ru.generate_id (prefix="execution.%(days)06d.%(day_counter)04d",
+                          mode=ru.ID_CUSTOM)
+
+    if os.path.exists ('%s/%s/' % (data, eid)):
+        return {"success" : False, 
+                "eid"     : eid,
+                "error"   : "execution id %s exists" % eid}
+    
+    exp = bottle.request.forms.get("json")
+
+    if not exp:
+        return {"success" : False, 
+                "eid"     : eid,
+                "error"   : "missing execution description"}
+
+    import pprint
+    pprint.pprint (exp)
+
+    os.system ('mkdir  %s/%s/'     % (data, eid))
+    os.system ('date > %s/%s/data' % (data, eid))
+    
+    return {"success" : True, 
+            "eid"     : eid,
+            "result"  : "execution %s has been successful" % eid}
+
+
+# ------------------------------------------------------------------------------
+#
+bottle.run (host='localhost', port=8080, debug=True)
+
+
+# ------------------------------------------------------------------------------
+
