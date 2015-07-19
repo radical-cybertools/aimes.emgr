@@ -384,7 +384,7 @@ def derive_resources(cfg, bundle):
 
 
 # -----------------------------------------------------------------------------
-def derive_execution_stategy(workflow, resources, run):
+def derive_execution_stategy(cfg, workflow, resources, run):
     '''Pass.
     '''
 
@@ -1226,7 +1226,7 @@ def execute_run(cfg, run):
         # STRATEGY
         # ------------------------------------------------------------------
         # Define execution strategy.
-        strategy = derive_execution_stategy(workflow, resources, run)
+        strategy = derive_execution_stategy(cfg, workflow, resources, run)
 
         log_execution_stategy(run, strategy)
 
