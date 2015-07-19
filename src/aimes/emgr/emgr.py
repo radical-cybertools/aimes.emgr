@@ -51,12 +51,12 @@ def create_run_environment(cfg, run_cfg, tracker, q_qsize):
     '''Pass
     '''
 
-    run = {'scale'     : run[0],
-           'binding'   : run[1],
-           'uniformity': run[2],
-           'iteration' : run[3],
-           'rerun'     : run[4],
-           'cores'     : run[5],
+    run = {'scale'     : run_cfg[0],
+           'binding'   : run_cfg[1],
+           'uniformity': run_cfg[2],
+           'iteration' : run_cfg[3],
+           'rerun'     : run_cfg[4],
+           'cores'     : run_cfg[5],
            'number'    : tracker,
            'left'      : q_qsize}
 
