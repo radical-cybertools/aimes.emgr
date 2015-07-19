@@ -36,7 +36,7 @@ def get_version (mod_root):
     mod_root
         a VERSION file containes the version strings is created in mod_root,
         during installation.  That file is used at runtime to get the version
-        information.  
+        information.
         """
 
     try:
@@ -87,7 +87,7 @@ def get_version (mod_root):
         sdist_name = sdist_name.replace ('@', '-')
         sdist_name = sdist_name.replace ('#', '-')
         sdist_name = sdist_name.replace ('_', '-')
-        if '--record'  in sys.argv or 'bdist_egg' in sys.argv :   
+        if '--record'  in sys.argv or 'bdist_egg' in sys.argv :
            # pip install stage 2      easy_install stage 1
            # NOTE: pip install will untar the sdist in a tmp tree.  In that tmp
            # tree, we won't be able to derive git version tags -- so we pack the
@@ -173,9 +173,7 @@ setup_args = {
     'namespace_packages' : ['aimes'],
     'packages'           : find_packages('src'),
     'package_dir'        : {'': 'src'},
-    'scripts'            : ['bin/aimes-emgr-experiments',
-                            'bin/aimes-emgr-rest'
-                           ],
+    'scripts'            : ['bin/aimes-emgr-rest'],
     'package_data'       : {'': ['*.sh', '*.json', '*.gz', 'VERSION', 'SDIST', sdist_name]},
     'cmdclass'           : {
         'test'           : our_test,

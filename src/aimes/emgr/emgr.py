@@ -38,7 +38,7 @@ from email.mime.text import MIMEText
 from email.utils import COMMASPACE, formatdate
 from string import Template
 
-__author__ = "Matteo Turilli"
+__author__ = "Matteo Turilli, Andre Merzky"
 __copyright__ = "Copyright 2015, The AIMES Project"
 __license__ = "MIT"
 __credits__ = ["Andre Merzky"]
@@ -169,7 +169,6 @@ def write_bundle_conf(cfg, binding, fout):
 
         substitutes['RESOURCE_LIST'] += entry_template % \
             (scheduler, resource, cfg['bundle_username'])
-
 
     for resource, properties in cfg['bundle_unsupported'].iteritems():
 
@@ -942,7 +941,6 @@ def create_diagram(run):
     '''Pass.
     '''
 
-
     enter   = 'cd %s ; ' % run['root']
     diagram = 'radicalpilot-stats -m plot,stat -s %s ' % run['session_id']
     mongodb = '-d %s ' % cfg['rp_dburl']
@@ -1317,4 +1315,3 @@ def execute_run(cfg, run):
 
 
 # -----------------------------------------------------------------------------
-
