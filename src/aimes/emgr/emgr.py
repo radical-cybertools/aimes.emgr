@@ -403,14 +403,25 @@ def derive_execution_stategy(cfg, workflow, resources, run):
     # CHOOSE RESOURCES: Get the resources from the bundle.
     strategy['inference']['target_resources'] = list()
 
-    for resource in cfg['bundle_resources'].keys():
+    if cfg['bundle_resources']:
+        for resource in cfg['bundle_resources'].keys():
 
-        if run['binding'] == 'early' and cfg['bundle_resource'] in resource:
-            strategy['inference']['target_resources'].append(
-                uri_to_tag(resource))
-            break
+            if run['binding'] == 'early' and cfg['bundle_resource'] in resource:
+                strategy['inference']['target_resources'].append(
+                    uri_to_tag(resource))
+                break
 
-        strategy['inference']['target_resources'].append(uri_to_tag(resource))
+            strategy['inference']['target_resources'].append(uri_to_tag(resource))
+
+    if cfg['bundle_unsupported']:
+        for resource in cfg['bundle_unsupported'].keys():
+
+            if run['binding'] == 'early' and cfg['bundle_unsupported'] in resource:
+                strategy['inference']['target_resources'].append(
+                    uri_to_tag(resource))
+                break
+
+            strategy['inference']['target_resources'].append(uri_to_tag(resource))
 
     # CHOOSE NUMBER OF PILOTS: Adopt an heuristics that tells us how many
     # concurrent resources we should choose given the execution time
