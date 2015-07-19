@@ -163,7 +163,7 @@ def write_bundle_conf(cfg, binding, fout):
     if cfg['bundle_resources']:
         for resource, scheduler in cfg['bundle_resources'].iteritems():
 
-            if binding == 'early' and cfg['bundle_resource'] in resource:
+            if binding == 'early' and cfg['bundle_resources'] in resource:
                 substitutes['RESOURCE_LIST'] = entry_template % \
                     (scheduler, resource, cfg['bundle_username'])
                 break
@@ -406,7 +406,7 @@ def derive_execution_stategy(cfg, workflow, resources, run):
     if cfg['bundle_resources']:
         for resource in cfg['bundle_resources'].keys():
 
-            if run['binding'] == 'early' and cfg['bundle_resource'] in resource:
+            if run['binding'] == 'early' and cfg['bundle_resources'] in resource:
                 strategy['inference']['target_resources'].append(
                     uri_to_tag(resource))
                 break
@@ -767,10 +767,10 @@ def log_execution_stategy(cfg, run, strategy):
 
     print >> f, "Configurations:"
 
-    if cfg['bundle_resource']:
-        print "I am here: %s" % cfg['bundle_resource']
+    if cfg['bundle_resources']:
+        print "I am here: %s" % cfg['bundle_resources']
         print >> f, "\tTarget resource for early binding : %s" %\
-            cfg['bundle_resource']
+            cfg['bundle_resources']
 
         print >> f, "\tTarget resources for late binding : %s" %\
             ', '.join(map(str, cfg['bundle_resources'].keys()))
@@ -959,7 +959,7 @@ def write_email_body(cfg, run):
 
 
 # -----------------------------------------------------------------------------
-def create_diagram(run):
+def create_diagram(cfg, run):
     '''Pass.
     '''
 
@@ -1009,13 +1009,13 @@ def email_report(cfg, run):
     subject = '[AIMES experiment] Run %s/-%s (%s) - %s' % \
         (run['number'], run['left'], run['tag'], run['state'])
 
-    diagrams = create_diagram(run)
+    diagrams = create_diagram(cfg, run)
 
     for diagram in diagrams:
         if os.path.exists(diagram):
             attachments.append(diagram)
 
-    attachments.append(dump_db(run))
+    attachments.append(dump_db(cfg, run))
     attachments.append(run['files']['log'])
 
     body = write_email_body(cfg, run)
@@ -1333,7 +1333,7 @@ def execute_run(cfg, run):
         record_run_state(run)
         session.close(cleanup=False, terminate=True)
 
-        email_report(run)
+        email_report(cfg, run)
 
 
 # -----------------------------------------------------------------------------
