@@ -96,7 +96,7 @@ if __name__ == '__main__':
 
         run_cfg = queue.get()
 
-        run = aimes.emgr.initialize_run_environment(cfg, run_cfg, tracker, queue.qsize())
+        run = aimes.emgr.create_run_environment(cfg, run_cfg, tracker, queue.qsize())
         aimes.emgr.execute_run(cfg, run)
         aimes.emgr.finalize_run_environment(cfg, run)
 
