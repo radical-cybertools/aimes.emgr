@@ -546,7 +546,7 @@ def derive_pilot_descriptions(cfg, strategy):
 
 
 # -----------------------------------------------------------------------------
-def derive_cu_descriptions(run, workflow):
+def derive_cu_descriptions(cfg, run, workflow):
     '''Derives CU from the tasks on n stages of the given workflow.
     '''
 
@@ -858,7 +858,7 @@ def log_pilot_descriptions(run):
 
 
 # -----------------------------------------------------------------------------
-def log_cu_descriptions(run, workflow):
+def log_cu_descriptions(cfg, run, workflow):
     '''Pass.
     '''
 
@@ -1266,9 +1266,9 @@ def execute_run(cfg, run):
 
         # CU DESCRIPTIONS
         # ------------------------------------------------------------------
-        run['cuds'] = derive_cu_descriptions(run, workflow)
+        run['cuds'] = derive_cu_descriptions(cfg, run, workflow)
 
-        log_cu_descriptions(run, workflow)
+        log_cu_descriptions(cfg, run, workflow)
 
         # PILOT SUBMISSIONS
         # ------------------------------------------------------------------
