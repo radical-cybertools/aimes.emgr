@@ -160,20 +160,22 @@ def write_bundle_conf(cfg, binding, fout):
     # config=etc/resource_config.json
     entry_template_unsupported = "cluster_type=%s hostname=%s config=%s\n"
 
-    for resource, scheduler in cfg['bundle_resources'].iteritems():
+    if cfg['bundle_resources']:
+        for resource, scheduler in cfg['bundle_resources'].iteritems():
 
-        if binding == 'early' and cfg['bundle_resource'] in resource:
-            substitutes['RESOURCE_LIST'] = entry_template % \
+            if binding == 'early' and cfg['bundle_resource'] in resource:
+                substitutes['RESOURCE_LIST'] = entry_template % \
+                    (scheduler, resource, cfg['bundle_username'])
+                break
+
+            substitutes['RESOURCE_LIST'] += entry_template % \
                 (scheduler, resource, cfg['bundle_username'])
-            break
 
-        substitutes['RESOURCE_LIST'] += entry_template % \
-            (scheduler, resource, cfg['bundle_username'])
+    if cfg['bundle_unsupported']:
+        for resource, properties in cfg['bundle_unsupported'].iteritems():
 
-    for resource, properties in cfg['bundle_unsupported'].iteritems():
-
-        substitutes['RESOURCE_LIST'] += entry_template_unsupported % \
-            (properties['sched'], resource, properties['fconf'])
+            substitutes['RESOURCE_LIST'] += entry_template_unsupported % \
+                (properties['sched'], resource, properties['fconf'])
 
     write_template(cfg['bundle_template'], substitutes, fout)
 
