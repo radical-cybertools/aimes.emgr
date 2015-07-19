@@ -222,7 +222,7 @@ def initialize_runtime(run):
 # -----------------------------------------------------------------------------
 # DERIVING
 # -----------------------------------------------------------------------------
-def derive_workflow(skeleton, run):
+def derive_workflow(cfg, skeleton, run):
     '''Pass
     '''
 
@@ -1205,7 +1205,7 @@ def execute_run(cfg, run):
         skeleton.setup()
 
         # Mine the skeleton for aggregated values.
-        workflow = derive_workflow(skeleton, run)
+        workflow = derive_workflow(cfg, skeleton, run)
 
         log_skeleton(run, workflow)
 
