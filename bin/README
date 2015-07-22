@@ -5,14 +5,11 @@ in first terminal, run:
  - source ve/bin/activate
  - pip install radical.pilot
  - pip install bottle
- - python emgr-rest.py 
+ - pip install requests
+ - cd bin/
+ - python aimes-emgr-rest
 
-in second terminal, run commands like:
+in second terminal (same ve), run :
 
-curl -X GET    http://localhost:8080/executions/
-curl -X PUT    http://localhost:8080/executions/ --data-urlencode "json=config.json"
-curl -X GET    http://localhost:8080/executions/execution.016631.0005
-curl -X GET    http://localhost:8080/executions/
-curl -X DELETE http://localhost:8080/executions/execution.016631.0005
-curl -X GET    http://localhost:8080/executions/
-
+ - python examples/aimes-swift-example.py
+ 

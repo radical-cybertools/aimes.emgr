@@ -1,3 +1,4 @@
+#!/usr/bin/env python
 
 import os
 import bottle 
@@ -9,112 +10,223 @@ import radical.utils as ru
 #
 # read configuration
 #
-config = ru.read_json('config.json')
-data   = config["path"]
+config     = ru.read_json('config.json')
+swift_root = "%s/swift" % config["path"]
 
-# make sure the data path exists
-os.system('mkdir -p %s' % data)
+# make sure the path exists
+os.system('mkdir -p %s' % swift_root)
 
+
+# We define two different APIs:
+#
+# The first, 'AIMES-API' allows to define and run experiments, similar to the
+# functionality used in examples/aimes-emgr-experiments.  It basically reflects:
+#
+#     run = aimes.emgr.create_run_environment(cfg, run_cfg, tracker, queue.qsize())
+#     aimes.emgr.execute_run(cfg, run)
+#     aimes.emgr.finalize_run_environment(cfg, run)
+#
+# The second we call 'SWIFT-API': it supports the definition of a workload by
+# defining a stream of CUs, and to at some point run that:
+#
+#     workload = aimes.emgr.create_swift_workload()
+#
+#     for i in range(100):
+#         workload.add (cu_description)
+#
+#     workload.run()
+#
+#     for i in range(100):
+#         workload.get_state (i)
+#
+
+# ==============================================================================
+#
+# AIMES API
+#
+# ==============================================================================
+
+# ==============================================================================
+#
+# SWIFT API
+#
+# ==============================================================================
+
+# keep a global counter for unit IDs
+uids = dict()
 
 # ------------------------------------------------------------------------------
-#
-# list all known executions
-#
-@bottle.route('/executions/')
-def executions_list():
+# list all swift workload
+@bottle.route('/swift/workloads/', method='GET')
+def swift_workload_list():
 
-    paths = os.listdir(data)
+    paths = os.listdir(swift_root)
 
     return {"success" : True  , 
             "paths"   : paths }
     
 
 # ------------------------------------------------------------------------------
-#
-# get details information on a specific execution
-#
-@bottle.route('/executions/<eid>', method='GET')
-def execution_show(eid=None):
+# create a new swift workload
+@bottle.route('/swift/workloads/', method='PUT')
+def swift_workload_create():
 
-    if not eid:
+    swid = ru.generate_id (prefix="sw.%(days)06d.%(day_counter)04d",
+                           mode=ru.ID_CUSTOM)
+
+    if os.path.exists ('%s/%s/' % (swift_root, swid)):
         return {"success" : False, 
-                "eid"     : eid,
-                "error"   : "missing execution id"}
+                "swid"    : swid,
+                "error"   : "workload id '%s' exists" % swid}
     
-    # look for data in data/<eid>/
-    if not os.path.exists ('%s/%s/' % (data, eid)):
-        return {"success" : False, 
-                "eid"     : eid,
-                "error"   : "execution id %s does not exist" % eid}
+    os.system ('mkdir  %s/%s/'     % (swift_root, swid))
 
+    uids[swid] = 0
+    
+    return {"success" : True, 
+            "swid"    : swid,
+            "result"  : "workload '%s' has been created" % swid}
+    
+
+# ------------------------------------------------------------------------------
+# add a CU to a swift workload
+@bottle.route('/swift/workloads/<swid>', method='PUT')
+def swift_workload_add_cu(swid=None):
+
+    if not swid:
+        return {"success" : False, 
+                "swid"    : swid,
+                "error"   : "missing workload id"}
+    
+    # look for in swift_root/<swid>/
+    workload_dir = '%s/%s/' % (swift_root, swid)
+    if not os.path.exists (workload_dir):
+        return {"success" : False, 
+                "swid"    : swid,
+                "error"   : "workload id %s does not exist" % swid}
+
+    cud = bottle.request.forms.get("cud")
+
+    if not cud:
+        return {"success" : False, 
+                "swid"    : swid,
+                "error"   : "missing cu description"}
+
+    import pprint
+    pprint.pprint (cud)
+
+    cuid  = uids[swid]
+    fname = '%s/%s/cu.%04d.json' % (swift_root, swid, cuid)
+    ru.write_json(cud, fname)
+
+    uids[swid] += 1
+    
+    return {"success" : True, 
+            "swid"    : swid,
+            "cuid"    : cuid,
+            "result"  : "unit '%s' created for workload %s" % (cuid, swid)}
+    
+
+# ------------------------------------------------------------------------------
+# list currently defined units in the workload
+@bottle.route('/swift/workloads/<swid>', method='GET')
+def swift_workload_show(swid=None):
+
+    if not swid:
+        return {"success" : False, 
+                "swid"    : swid,
+                "error"   : "missing workload id"}
+    
+    workload_dir = '%s/%s/' % (swift_root, swid)
+    if not os.path.exists (workload_dir):
+        return {"success" : False, 
+                "swid"    : swid,
+                "error"   : "workload id %s does not exist" % swid}
+
+    ret = dict()
+    ret['cuds'] = list()
     try:
-        with open('%s/%s/data' % (data, eid)) as f:
-            out = f.read()
+        paths = os.listdir(workload_dir)
+        for f in paths:
+            if f.startswith('cu.'):
+                ret['cuds'].append(ru.read_json("%s/%s" % (workload_dir,f)))
+
     except Exception as e:
         return {"success" : False, 
-                "eid"     : eid,
+                "swid"    : swid,
                 "error"   : "Exception: %s" % e}
 
     bottle.response.content_type = 'application/json'
     return {"success" : True, 
-            "eid"     : eid,
-            "result"  : out}
+            "swid"    : swid,
+            "result"  : ret}
     
 
 # ------------------------------------------------------------------------------
 #
-# delete a specific execution
+# delete a specific workload
 #
-@bottle.route('/executions/<eid>', method='DELETE' )
-def execution_delete(eid=None):
+@bottle.route('/swift/workloads/<swid>', method='DELETE' )
+def swift_workload_delete(swid=None):
 
-    if not eid:
+    if not swid:
         return {"success" : False, 
-                "eid"     : None,
-                "error"   : "missing execution id"}
+                "swid"    : None,
+                "error"   : "missing workload id"}
     
-    # remove executions from tree
-    os.system ('rm    %s/%s/*' % (data, eid))
-    os.system ('rmdir %s/%s/'  % (data, eid))
+    # remove workloads from tree
+    os.system ('rm    %s/%s/*' % (swift_root, swid))
+    os.system ('rmdir %s/%s/'  % (swift_root, swid))
+
+    uids[swid] = 0
 
     return {"success" : True, 
-            "eid"     : eid,
-            "result"  : "execution %s deleted" % eid}
+            "swid"    : swid,
+            "result"  : "workload %s deleted" % swid}
             
     
 # ------------------------------------------------------------------------------
 #
-# run a specific execution
+# run a specific workload
 #
-@bottle.route('/executions/', method='PUT')
-def execution_run():
+@bottle.route('/swift/workloads/<swid>/execute', method='PUT')
+def swift_workload_run(swid=None):
 
-    eid = ru.generate_id (prefix="execution.%(days)06d.%(day_counter)04d",
-                          mode=ru.ID_CUSTOM)
-
-    if os.path.exists ('%s/%s/' % (data, eid)):
+    if not swid:
         return {"success" : False, 
-                "eid"     : eid,
-                "error"   : "execution id %s exists" % eid}
+                "swid"    : swid,
+                "error"   : "missing workload id"}
     
-    exp = bottle.request.forms.get("json")
-
-    if not exp:
+    workload_dir = '%s/%s/' % (swift_root, swid)
+    if not os.path.exists (workload_dir):
         return {"success" : False, 
-                "eid"     : eid,
-                "error"   : "missing execution description"}
+                "swid"    : swid,
+                "error"   : "workload id %s does not exist" % swid}
 
-    import pprint
-    pprint.pprint (exp)
+    sw = dict()
+    sw['cuds'] = list()
+    try:
+        paths = os.listdir(workload_dir)
+        for f in paths:
+            if f.startswith('cu.'):
+                sw['cuds'].append(ru.read_json("%s/%s" % (workload_dir,f)))
 
-    os.system ('mkdir  %s/%s/'     % (data, eid))
-    os.system ('date > %s/%s/data' % (data, eid))
-    
+    except Exception as e:
+        return {"success" : False, 
+                "swid"    : swid,
+                "error"   : "Exception: %s" % e}
+
+    import aimes.emgr
+    cfg = 1
+    run = 2
+    ret = aimes.emgr.execute_swift_workload (cfg, run, sw)
+
+
+    bottle.response.content_type = 'application/json'
     return {"success" : True, 
-            "eid"     : eid,
-            "result"  : "execution %s has been successful" % eid}
-
-
+            "swid"    : swid,
+            "result"  : ret}
+    
 # ------------------------------------------------------------------------------
 #
 bottle.run (host='localhost', port=8080, debug=True)

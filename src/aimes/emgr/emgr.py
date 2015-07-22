@@ -384,7 +384,7 @@ def derive_resources(cfg, bundle):
 
 
 # -----------------------------------------------------------------------------
-def derive_execution_stategy(cfg, workflow, resources, run):
+def derive_execution_stategy_skeleton(cfg, workflow, resources, run):
     '''Pass.
     '''
 
@@ -483,6 +483,42 @@ def derive_execution_stategy(cfg, workflow, resources, run):
     strategy['inference']['cores_workflow'] = math.ceil(
         (workflow['stages_compute']['max'] *
          strategy['heuristic']['percentage_concurrency']) / 100.0)
+
+    return strategy
+
+
+# -----------------------------------------------------------------------------
+def derive_execution_stategy_swift(cfg, swift_workload, resources, run):
+    '''
+    the returned strategy needs to contain:
+
+        strategy['inference']['target_resources']
+        strategy['inference']['cores_workflow']
+        strategy['inference']['number_pilots']
+        strategy['inference']['compute_time_workflow']
+        strategy['inference']['staging_time_workflow']
+        strategy['inference']['rp_overhead_time_workflow']
+    '''
+
+    ES_PILOT_NUM      =  1
+    ES_PILOT_RESOURCE = 'xsede.stampede'
+    ES_COMPUTE_CORES  =   128
+    ES_COMPUTE_TIME   = 54321
+    ES_STAGING_TIME   = 12345
+    ES_OVERHEAD_TIME  = 01010
+
+    # TODO: infer those numbers from the given workload / set of resources
+    # / external information.  To do so, submit an AIMES-3 proposal to NSF.
+    info = {'target_resources'          : ES_PILOT_RESOURCE,
+            'cores_workflow'            : ES_COMPUTE_CORES,
+            'number_pilots'             : ES_PILOT_NUM,
+            'compute_time_workflow'     : ES_COMPUTE_TIME,
+            'staging_time_workflow'     : ES_STAGING_TIME,
+            'rp_overhead_time_workflow' : ES_OVERHEAD_TIME
+            }
+
+    strategy = {'heuristic' : info,
+                'inference' : info}
 
     return strategy
 
@@ -620,6 +656,23 @@ def derive_cu_descriptions(cfg, run, workflow):
             cud.cleanup = True
 
             cuds[stage.name].append(cud)
+
+    # Shuffle the list of CU descriptions so to minimize the impact of the
+    # list ordering on the ordering of the scheduling on one or more pilots.
+    random.shuffle(cuds)
+
+    return cuds
+
+
+# -----------------------------------------------------------------------------
+def derive_cu_descriptions_swift(cfg, run, swift_workload):
+    '''Derives CU from the given workload
+    '''
+
+    cuds = {'all': list()}
+
+    for cud in swift_workload['cuds']:
+        cuds['all'].append(cud)
 
     # Shuffle the list of CU descriptions so to minimize the impact of the
     # list ordering on the ordering of the scheduling on one or more pilots.
@@ -1246,7 +1299,7 @@ def execute_run(cfg, run):
         # STRATEGY
         # ------------------------------------------------------------------
         # Define execution strategy.
-        strategy = derive_execution_stategy(cfg, workflow, resources, run)
+        strategy = derive_execution_stategy_skeleton(cfg, workflow, resources, run)
 
         log_execution_stategy(cfg, run, strategy)
 
@@ -1302,6 +1355,138 @@ def execute_run(cfg, run):
 
             # Wait for all compute units to finish.
             umgr.wait_units()
+
+        # DONE
+        # ------------------------------------------------------------------
+        run['state'] = 'DONE'
+
+    except Exception as e:
+        # this catches all RP and system exceptions
+        print "Caught exception: %s" % e
+        traceback.print_exc()
+
+        run['state'] = 'FAILED'
+
+        raise
+
+    except (KeyboardInterrupt, SystemExit) as e:
+        # the callback called sys.exit(), we catch the corresponding
+        # KeyboardInterrupt exception for shutdown.  We also catch
+        # SystemExit which gets raised if the main threads exits for
+        # some other reason.
+        print "Caught exception, exit now: %s" % e
+
+        run['state'] = 'FAILED'
+
+        raise
+
+    finally:
+        # always clean up the session, no matter whether we caught an
+        # exception
+        record_run_state(run)
+        session.close(cleanup=False, terminate=True)
+
+        email_report(cfg, run)
+
+
+# -----------------------------------------------------------------------------
+#
+# same for a swift workload
+#
+def execute_swift_workload(cfg, run, swift_workload):
+    '''TODO
+    '''
+
+    print 'execute swift workload'
+    import pprint
+    pprint.pprint(cfg)
+    pprint.pprint(run)
+    pprint.pprint(swift_workload)
+    return 'wohoo!'
+
+    try:
+
+        run['state'] = 'ACTIVE'
+
+        record_run_state(run)
+
+        # SESSION
+        # -----------------------------------------------------------------
+        # Create session in Radical Pilot for this run.
+        session           = rp.Session(database_url=cfg['rp_dburl'])
+        run['session_id'] = session.uid
+
+        record_run_session(run)
+
+        # RESOURCES
+        # ------------------------------------------------------------------
+        # Acquire and process bundles.
+        bundle = aimes.bundle.Bundle(query_mode=aimes.bundle.DB_QUERY,
+                                     mongodb_url=cfg['bundle_dburl'],
+                                     origin=cfg['bundle_origin'])
+
+        # Mine bundles for resource properties and states.
+        resources = derive_resources(cfg, bundle)
+
+        log_bundle(run, resources)
+
+        # STRATEGY
+        # ------------------------------------------------------------------
+        # Define execution strategy.
+        strategy = derive_execution_stategy_swift(cfg, swift_workload, resources, run)
+
+        log_execution_stategy(cfg, run, strategy)
+
+        # PILOT MANAGER
+        # ------------------------------------------------------------------
+        pmgr = rp.PilotManager(session=session)
+
+        run['pilot_manager_id'] = pmgr.uid
+
+        pmgr.register_callback(pilot_state_cb, callback_data=run)
+
+        # PILOT DESCRIPTIONS
+        # ------------------------------------------------------------------
+        run['pdescs'] = derive_pilot_descriptions(cfg, strategy)
+
+        log_pilot_descriptions(run)
+
+        # CU DESCRIPTIONS
+        # ------------------------------------------------------------------
+        run['cuds'] = derive_cu_descriptions_swift(cfg, run, swift_workload)
+
+        log_cu_descriptions(cfg, run, swift_workload)
+
+        # PILOT SUBMISSIONS
+        # ------------------------------------------------------------------
+        run['pilots']    = pmgr.submit_pilots(run['pdescs'])
+        run['pilot_ids'] = [(p.uid, p.resource) for p in run['pilots']]
+
+        # UNIT MANAGERS
+        # ------------------------------------------------------------------
+        scheduler = {'SCHED_BACKFILLING'      : rp.SCHED_BACKFILLING,
+                     'SCHED_DIRECT_SUBMISSION': rp.SCHED_DIRECT_SUBMISSION
+                    }[strategy['inference']['rp_scheduler']]
+
+        umgr = rp.UnitManager(session=session, scheduler=scheduler)
+
+        run['unit_manager_id'] = umgr.uid
+
+        umgr.add_pilots(run['pilots'])
+
+        umgr.register_callback(wait_queue_size_cb, rp.WAIT_QUEUE_SIZE,
+                               callback_data=run)
+        umgr.register_callback(unit_state_change_cb,
+                               callback_data=run)
+
+        log_rp(run)
+
+        # EXECUTION
+        # ------------------------------------------------------------------
+        umgr.submit_units(run['cuds']['all'])
+
+        # Wait for all compute units to finish.
+        umgr.wait_units()
 
         # DONE
         # ------------------------------------------------------------------
