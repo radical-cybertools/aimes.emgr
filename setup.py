@@ -179,6 +179,7 @@ setup_args = {
         'test'           : our_test,
     },
     'install_requires'   : ['radical.pilot',
+                            'aimes.skeleton',
                             'aimes.bundle',
                            ],
     'tests_require'      : [],
