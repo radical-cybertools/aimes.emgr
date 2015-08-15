@@ -1,7 +1,9 @@
 #!/usr/bin/env python
 
 import os
+import time
 import bottle 
+import threading
 
 import radical.utils as ru
 
@@ -10,10 +12,12 @@ import radical.utils as ru
 #
 # read configuration
 #
-config     = ru.read_json('config.json')
-swift_root = "%s/swift" % config["path"]
+config        = ru.read_json('config.json')
+swift_root    = "%s/swift" % config["path"]
+swift_timeout = 10      # run workload after 10 seconds of idleness
+swift_runlog  = dict()  # record running units
 
-# make sure the path exists
+# make sure the root exists
 os.system('mkdir -p %s' % swift_root)
 
 
@@ -52,8 +56,88 @@ os.system('mkdir -p %s' % swift_root)
 #
 # ==============================================================================
 
+# ------------------------------------------------------------------------------
 # keep a global counter for unit IDs
 uids = dict()
+
+
+# ------------------------------------------------------------------------------
+#
+# update timestamps for workloads.  See documentation of _workload_watcher() to
+# see why
+#
+# We lock timestamp activities.  That single lock won't scale far...
+ts_lock = threading.RLock()
+def _timestamp(swid):
+
+    with ts_lock:
+        now = time.time()
+        os.system ('echo "%s" > %s/%s/timestamp' % (now, swift_root, swid))
+
+
+# ------------------------------------------------------------------------------
+#
+def _get_timestamp(swid):
+
+    with ts_lock:
+        try:
+            with open ("%s/%s/timestamp" % (swift_root, swid), "r") as f:
+                return float(f.read().strip())
+        except Exception as e:
+            print "could not read timstamp for %s: %s" % (swid, e)
+            return None
+
+
+# ------------------------------------------------------------------------------
+#
+# run a (partial) workload
+#
+def _run_workload(swid):
+
+    try:
+        workload_dir = '%s/%s/' % (swift_root, swid)
+        if not os.path.exists (workload_dir):
+            raise ValueError ("workload id %s does not exist" % swid)
+
+        # avoid rerunning units on the next timeout, by recording a runlog
+        if not swid in swift_runlog:
+            swift_runlog[swid] = list()
+
+        runlog = swift_runlog[swid]
+
+        # collect all units which are not in the runlog
+        sw = dict()
+        sw['cuds'] = list()
+
+        paths = os.listdir(workload_dir)
+        for f in paths:
+            if f.startswith('cu.'):
+                if f in runlog:
+                    print 'skipping %s' % f
+                else:
+                    sw['cuds'].append(ru.read_json("%s/%s" % (workload_dir,f)))
+                    runlog.append(f)
+
+        import aimes.emgr
+        cfg = 1
+        run = 2
+        ret = aimes.emgr.execute_swift_workload (cfg, run, sw)
+
+        print "execution done: %s" % ret
+
+        # remove the timestamp -- no need to watch this workload until new units
+        # arrive
+        try:
+            os.unlink("%s/timestamp" % workload_dir)
+        except:
+            pass
+
+        return ret
+
+    except Exception as e:
+        print "ERROR: workload execution failed: %s" % e
+        raise
+
 
 # ------------------------------------------------------------------------------
 # list all swift workload
@@ -79,7 +163,7 @@ def swift_workload_create():
                 "swid"    : swid,
                 "error"   : "workload id '%s' exists" % swid}
     
-    os.system ('mkdir  %s/%s/'     % (swift_root, swid))
+    os.system ('mkdir %s/%s/' % (swift_root, swid))
 
     uids[swid] = 0
     
@@ -119,6 +203,7 @@ def swift_workload_add_cu(swid=None):
     fname = '%s/%s/cu.%04d.json' % (swift_root, swid, cuid)
     ru.write_json(cud, fname)
 
+    _timestamp(swid)
     uids[swid] += 1
     
     return {"success" : True, 
@@ -179,6 +264,7 @@ def swift_workload_delete(swid=None):
     os.system ('rmdir %s/%s/'  % (swift_root, swid))
 
     uids[swid] = 0
+    del(swift_runlog[swid])
 
     return {"success" : True, 
             "swid"    : swid,
@@ -197,30 +283,15 @@ def swift_workload_run(swid=None):
                 "swid"    : swid,
                 "error"   : "missing workload id"}
     
-    workload_dir = '%s/%s/' % (swift_root, swid)
-    if not os.path.exists (workload_dir):
-        return {"success" : False, 
-                "swid"    : swid,
-                "error"   : "workload id %s does not exist" % swid}
-
-    sw = dict()
-    sw['cuds'] = list()
+    ret = None
     try:
-        paths = os.listdir(workload_dir)
-        for f in paths:
-            if f.startswith('cu.'):
-                sw['cuds'].append(ru.read_json("%s/%s" % (workload_dir,f)))
+        print "explicit workload run for %s" % swid
+        ret = _run_workload(swid)
 
     except Exception as e:
         return {"success" : False, 
                 "swid"    : swid,
                 "error"   : "Exception: %s" % e}
-
-    import aimes.emgr
-    cfg = 1
-    run = 2
-    ret = aimes.emgr.execute_swift_workload (cfg, run, sw)
-
 
     bottle.response.content_type = 'application/json'
     return {"success" : True, 
@@ -229,7 +300,68 @@ def swift_workload_run(swid=None):
     
 # ------------------------------------------------------------------------------
 #
+# Swift will never know if more tasks get submitted, so it cannot sensibly call
+# 'swift_workload_run'.  We thus run a separate thread which watches all
+# workloads, and if a workload did not see any new units added for N seconds, it
+# will call run on it.
+#
+# FIXME: any error on workload execution will not be visible to the user of the
+#        service.  We should log errors to a file and add a 'workload_status'
+#        method.
+#
+def _workload_watcher(terminate):
+
+    print "timed workload watcher started"
+
+    workloads = dict()
+
+    while not terminate.is_set():
+
+
+        paths = os.listdir(swift_root)
+
+        for swid in paths:
+
+          # print "timed workload check for %s" % swid
+
+            ts_file = "%s/%s/timestamp" % (swift_root, swid)
+
+            if not os.path.exists (ts_file):
+                # workload does not need any watching
+                continue
+
+            # no timestamp -- nothing to do
+            last_action = _get_timestamp(swid)
+            if not last_action:
+              # print "timed workload check for %s misses timestamp" % swid
+                continue
+
+            # otherwise we check if enough time passed -- if not, nothing to do
+            if (time.time() - last_action) < swift_timeout:
+                print "timed workload check for %s skipped (%.2f < %.2f)" \
+                        % (swid, (time.time() - last_action), swift_timeout)
+                continue
+
+            # we should run this workload
+            try:
+                print "timed workload run for %s" % swid
+                _run_workload(swid)
+            except Exception as e:
+                print "error on timed workload run for %s: %s" % (swid, e)
+
+        # avoid busy loop
+        time.sleep(1)
+
+# ------------------------------------------------------------------------------
+#
+#
+terminate = threading.Event()
+watcher   = threading.Thread (target=_workload_watcher, args=[terminate])
+watcher.start()
 bottle.run (host='localhost', port=8080, debug=True)
+
+terminate.set()
+watcher.join()
 
 
 # ------------------------------------------------------------------------------

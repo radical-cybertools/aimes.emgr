@@ -5,8 +5,11 @@
 
 import sys
 import json
+import time
 import pprint
 import requests
+
+cnt = 0
 
 if len(sys.argv) < 2:
     print "\n\n\tusage: %s <rest-endpoint>\n\n" % sys.argv[0]
@@ -26,7 +29,9 @@ def create_workload():
     return swid
 
 def add_cu(swid):
-    data = {'cud': '{"executable":"/bin/date"}'}
+    global cnt
+    cnt += 1
+    data = {'cud': '{"executable":"/bin/exe_%03d"}' % cnt}
     r = requests.put("%s/swift/workloads/%s" % (ep, swid), data) 
     print r.json()
 
@@ -43,15 +48,34 @@ def delete_workload(swid):
     print r.json()
 
 
-
 list_workloads()
+
+# create a workload, and fill it with some CUs.  Then let some time expire so
+# that the workload gets executed by the watcher 
 swid = create_workload()
 add_cu(swid)
 add_cu(swid)
 add_cu(swid)
+time.sleep(6)
+
+# Now we do the same again, on the same workload.  Only the second batch of
+# units should get executed
+add_cu(swid)
+add_cu(swid)
+add_cu(swid)
+time.sleep(6)
+
+# now we should have two batches of units executing.  We can submit the
+# third one explicitly
+
+add_cu(swid)
+add_cu(swid)
+add_cu(swid)
+run_workload(swid)
+
 list_workloads()
 dump_workload(swid)
-run_workload(swid)
-delete_workload(swid)
+
+# delete_workload(swid)
 list_workloads()
 
