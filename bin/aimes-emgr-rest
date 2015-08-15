@@ -118,6 +118,8 @@ def _run_workload(swid):
                     sw['cuds'].append(ru.read_json("%s/%s" % (workload_dir,f)))
                     runlog.append(f)
 
+        # FIXME: we need config files and a 'run' struct here, so that emgr can
+        #        actually start managing things.
         import aimes.emgr
         cfg = 1
         run = 2
