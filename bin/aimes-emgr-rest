@@ -1,64 +1,88 @@
 #!/usr/bin/env python
 
 import os
+import errno
 import time
+import glob
+import json
 import bottle 
 import threading
 
 import radical.utils as ru
 
-
+# We consider a swift session to represent one more-or-less coherent workload
+# which is submitted as a stream of tasks.  We chunk that stream into arbitrary
+# chunks which we call 'emgr-workloads', and hand it over to the aimes-emgr
+# layer for execution.  We will need to maintain a mapping from tasks to
+# workloads, so that we can report state changes to swift.  For that we use the
+# CU 'name' property.  We also ask the emgr to register a state callback for us,
+# because otherwise we'd never lean about unit updates.
+#
+# The API is basically:
+#
+#   ssid = create_swift_session()
+#   stid = submit_swift_task(ssid, description)
+#   state = check_state(ssid, stid)
+#
+# On disk, we basically have this layout:
+#
+#   -- root/
+#      |
+#      +-- ssid/
+#          |
+#          + -- timestamp   # time of last workload execution
+#          + -- workload_01/
+#          |    |
+#          |    +-- units_01.json
+#          |    +-- units_02.json
+#          |
+#          + -- workload_02/
+#          |    |
+#          |    +-- units_03.json
+#          |
+#          | -- workload --> workload_02/
+#               # this symbolic link is always pointing to the workload which is
+#               # currently filled for execution.  When the times execution runs
+#               # this workload, it will reroute the link to a new workload.
+#               # this is why the session lock exists.
+#
+# In order to map swift task descriptions to units IDs, we set the CU name to
+# the task sequence number (which is used as task ID).  When getting an RP
+# callback for a CU state change, we can inspect the CU name and map it back to
+# the task ID.
+#
 # ------------------------------------------------------------------------------
 #
 # read configuration
 #
-config        = ru.read_json('config.json')
-swift_root    = "%s/swift" % config["path"]
-swift_timeout = 10      # run workload after 10 seconds of idleness
-swift_runlog  = dict()  # record running units
+config   = ru.read_json('config.json')
+root     = "%s/swift" % config["path"]
+timeout  =  5      # run workload after 10 seconds of idleness
+sessions = dict()  # record running units
 
 # make sure the root exists
-os.system('mkdir -p %s' % swift_root)
+os.system('mkdir -p %s' % root)
 
+# We lock two entities: timestamp and sessions
+ts_lock      = threading.RLock()
+session_lock = threading.RLock()
 
-# We define two different APIs:
-#
-# The first, 'AIMES-API' allows to define and run experiments, similar to the
-# functionality used in examples/aimes-emgr-experiments.  It basically reflects:
-#
-#     run = aimes.emgr.create_run_environment(cfg, run_cfg, tracker, queue.qsize())
-#     aimes.emgr.execute_run(cfg, run)
-#     aimes.emgr.finalize_run_environment(cfg, run)
-#
-# The second we call 'SWIFT-API': it supports the definition of a workload by
-# defining a stream of CUs, and to at some point run that:
-#
-#     workload = aimes.emgr.create_swift_workload()
-#
-#     for i in range(100):
-#         workload.add (cu_description)
-#
-#     workload.run()
-#
-#     for i in range(100):
-#         workload.get_state (i)
-#
-
-# ==============================================================================
-#
-# AIMES API
-#
-# ==============================================================================
-
-# ==============================================================================
-#
-# SWIFT API
-#
-# ==============================================================================
 
 # ------------------------------------------------------------------------------
-# keep a global counter for unit IDs
-uids = dict()
+#
+def mkdir(path):
+    try:
+        os.makedirs(path)
+    except OSError as e:
+        if e.errno != errno.EEXIST:
+            raise
+
+def unlink(path, name):
+    os.remove("%s/%s" % (path, name))
+
+def link(path, src, tgt):
+    print "cd %s && ln -s %s %s" % (path, src, tgt)
+    os.system("cd %s && ln -s %s %s" % (path, src, tgt))
 
 
 # ------------------------------------------------------------------------------
@@ -66,245 +90,383 @@ uids = dict()
 # update timestamps for workloads.  See documentation of _workload_watcher() to
 # see why
 #
-# We lock timestamp activities.  That single lock won't scale far...
-ts_lock = threading.RLock()
-def _timestamp(swid):
+def _timestamp(ssid):
 
     with ts_lock:
         now = time.time()
-        os.system ('echo "%s" > %s/%s/timestamp' % (now, swift_root, swid))
+        os.system('echo "%s" > %s/%s/timestamp' % (now, root, ssid))
 
 
 # ------------------------------------------------------------------------------
 #
-def _get_timestamp(swid):
+def _get_timestamp(ssid):
 
     with ts_lock:
-        try:
-            with open ("%s/%s/timestamp" % (swift_root, swid), "r") as f:
-                return float(f.read().strip())
-        except Exception as e:
-            print "could not read timstamp for %s: %s" % (swid, e)
-            return None
+        with open("%s/%s/timestamp" % (root, ssid), "r") as f:
+            return float(f.read().strip())
+
+
+# ------------------------------------------------------------------------------
+#
+# get state notifications
+#
+def _state_cb(unit, state):
+
+    # we dig the ssid and stid out of the unit name
+    if not unit['name'] or not ':' in unit['name']:
+        print "state_cb: invalid units name: %s" % unit['name']
+        return True
+
+    ssid, stid = unit['name'].split(':', 1)
+
+    with session_lock:
+
+        if not ssid in sessions:
+            print "state_cb: invalid session id: %s" % ssid
+            return True
+
+        if not stid in sessions[ssid]['tasks']:
+            print "state_cb: invalid task id: %s" % stid
+            return True
+
+        print 'updating task state: %s:%s : %s' % (ssid, stid, state)
+        sessions[ssid]['tasks'][stid]['state'] = state
+        return True
 
 
 # ------------------------------------------------------------------------------
 #
 # run a (partial) workload
 #
-def _run_workload(swid):
+def _run_workload(ssid):
 
     try:
-        workload_dir = '%s/%s/' % (swift_root, swid)
-        if not os.path.exists (workload_dir):
-            raise ValueError ("workload id %s does not exist" % swid)
+        with session_lock:
+            cwd = sessions[ssid]['cwd']
+            wld = sessions[ssid]['wld']
+            if not os.path.exists(wld):
+                raise ValueError("swift session id %s is inconsistent" % ssid)
 
-        # avoid rerunning units on the next timeout, by recording a runlog
-        if not swid in swift_runlog:
-            swift_runlog[swid] = list()
+            # we only need to do anything if there are tasks to be executed
+            task_files = glob.glob("%s/*.json" % wld)
+            if not task_files:
+                print "no tasks to execute for session %s (refreshing timestamp)" % ssid
+                _timestamp(ssid)
+                return None
 
-        runlog = swift_runlog[swid]
+            # avoid rerunning units on the next timeout, by creating a new workload
+            # dir for new units, and re-linking the 'workload' link to that one
+            old_wl_name = 'workload_%d' % sessions[ssid]['wlcnt']
+            sessions[ssid]['wlcnt'] += 1
+            new_wl_name = 'workload_%d' % sessions[ssid]['wlcnt']
 
-        # collect all units which are not in the runlog
+            mkdir ('%s/%s/%s' % (root, ssid, new_wl_name))
+            unlink(cwd, 'workload')
+            link  (cwd, new_wl_name, 'workload')
+
+            # at this point we can actually release the session lock -- the new
+            # wld pointee is in place and can be used.
+            #
+
+        # collect all tasks into a swift_workload, as compute unit
+        # descriptions
         sw = dict()
         sw['cuds'] = list()
 
-        paths = os.listdir(workload_dir)
+        paths = glob.glob("%s/%s/*" % (cwd, old_wl_name))
         for f in paths:
-            if f.startswith('cu.'):
-                if f in runlog:
-                    print 'skipping %s' % f
-                else:
-                    sw['cuds'].append(ru.read_json("%s/%s" % (workload_dir,f)))
-                    runlog.append(f)
+            sw['cuds'].append(ru.read_json(f))
 
-        # FIXME: we need config files and a 'run' struct here, so that emgr can
-        #        actually start managing things.
+        # FIXME MT: we need config files and a 'run' struct here, so that emgr
+        #           can actually start managing things.
         import aimes.emgr
         cfg = 1
         run = 2
-        ret = aimes.emgr.execute_swift_workload (cfg, run, sw)
 
-        print "execution done: %s" % ret
+        # we are not really interested in the workload execution result -- we
+        # watch the individual units.  So we execute the workload in the
+        # background in aseparate thread.
+        def _wl_executor(cfg, run, sw):
+            # run the workload, and also pass the state callback so that we get
+            # state notifications
+            aimes.emgr.execute_swift_workload(cfg, run, sw, _state_cb)
+        wl_thread = threading.Thread(target=_wl_executor, args=[cfg, run, sw])
+        wl_thread.start()
+        sessions[ssid]['threads'].append(wl_thread)
 
         # remove the timestamp -- no need to watch this workload until new units
         # arrive
         try:
-            os.unlink("%s/timestamp" % workload_dir)
+            os.unlink("%s/timestamp" % cwd)
         except:
             pass
 
-        return ret
 
     except Exception as e:
+        import logging
+        logging.exception('oops')
         print "ERROR: workload execution failed: %s" % e
         raise
 
 
 # ------------------------------------------------------------------------------
 # list all swift workload
-@bottle.route('/swift/workloads/', method='GET')
-def swift_workload_list():
+@bottle.route('/swift/sessions/', method='GET')
+def swift_session_list():
 
-    paths = os.listdir(swift_root)
-
-    return {"success" : True  , 
-            "paths"   : paths }
+    with session_lock:
+        return {"success" : True  , 
+                "paths"   : sessions.keys() }
     
 
 # ------------------------------------------------------------------------------
 # create a new swift workload
-@bottle.route('/swift/workloads/', method='PUT')
-def swift_workload_create():
+@bottle.route('/swift/sessions/', method='PUT')
+def swift_session_create():
 
-    swid = ru.generate_id (prefix="sw.%(days)06d.%(day_counter)04d",
-                           mode=ru.ID_CUSTOM)
+    ssid = ru.generate_id(prefix="ssid.%(days)06d.%(day_counter)04d",
+                          mode=ru.ID_CUSTOM)
 
-    if os.path.exists ('%s/%s/' % (swift_root, swid)):
+    if os.path.exists('%s/%s/' % (root, ssid)):
         return {"success" : False, 
-                "swid"    : swid,
-                "error"   : "workload id '%s' exists" % swid}
+                "ssid"    : ssid,
+                "error"   : "swift session '%s' exists" % ssid}
     
-    os.system ('mkdir %s/%s/' % (swift_root, swid))
+    with session_lock:
+        sessions[ssid]            = dict()
+        sessions[ssid]['tasks']   = dict()
+        sessions[ssid]['threads'] = list()  # active workload executions
+        sessions[ssid]['tcnt']    = 0       # counter for generating task IDs
+        sessions[ssid]['wlcnt']   = 0       # counter for generating workload IDs
+        sessions[ssid]['cwd']     = "%s/%s"          % (root, ssid)
+        sessions[ssid]['wld']     = "%s/%s/workload" % (root, ssid)
+    
+        # create the first workload dir, and link 'workload' to it
+        cwd = sessions[ssid]['cwd']
+        wld = sessions[ssid]['wld']
+        wl_name = 'workload_%d'          % sessions[ssid]['wlcnt']
+        mkdir('%s/%s/%s' % (root, ssid, wl_name))
+        link (cwd, wl_name, 'workload')
 
-    uids[swid] = 0
-    
     return {"success" : True, 
-            "swid"    : swid,
-            "result"  : "workload '%s' has been created" % swid}
+            "ssid"    : ssid,
+            "result"  : "swift session '%s' has been created" % ssid}
     
 
 # ------------------------------------------------------------------------------
-# add a CU to a swift workload
-@bottle.route('/swift/workloads/<swid>', method='PUT')
-def swift_workload_add_cu(swid=None):
+# add a task to a swift workload
+@bottle.route('/swift/sessions/<ssid>', method='PUT')
+def swift_task_submit(ssid=None):
 
-    if not swid:
+    if not ssid:
         return {"success" : False, 
-                "swid"    : swid,
-                "error"   : "missing workload id"}
+                "ssid"    : ssid,
+                "stid"    : None,
+                "error"   : "missing swift session id"}
     
-    # look for in swift_root/<swid>/
-    workload_dir = '%s/%s/' % (swift_root, swid)
-    if not os.path.exists (workload_dir):
+    # look for in root/<ssid>/
+    if not ssid in sessions:
         return {"success" : False, 
-                "swid"    : swid,
-                "error"   : "workload id %s does not exist" % swid}
+                "ssid"    : ssid,
+                "stid"    : None,
+                "error"   : "swift session id %s does not exist" % ssid}
 
-    cud = bottle.request.forms.get("cud")
-
-    if not cud:
+    wld = sessions[ssid]['wld']
+    if not os.path.exists(wld):
         return {"success" : False, 
-                "swid"    : swid,
-                "error"   : "missing cu description"}
+                "ssid"    : ssid,
+                "stid"    : None,
+                "error"   : "swift session %s is inconsistent" % ssid}
 
-    import pprint
-    pprint.pprint (cud)
+    td = json.loads(bottle.request.forms.get("td"))
 
-    cuid  = uids[swid]
-    fname = '%s/%s/cu.%04d.json' % (swift_root, swid, cuid)
-    ru.write_json(cud, fname)
+    if not td:
+        return {"success" : False, 
+                "ssid"    : ssid,
+                "stid"    : None,
+                "error"   : "missing task description"}
 
-    _timestamp(swid)
-    uids[swid] += 1
+    with session_lock:
+        stid  = 'task.%06d' % sessions[ssid]['tcnt']
+        sessions[ssid]['tcnt'] += 1
+
+        # we set the swift task id as CU name, so that we can identify the ytask
+        # later, when getting RP state updates
+        td['name'] = "%s:%s" % (ssid, stid)
+
+        fname = '%s/%s.json' % (wld, stid)
+        ru.write_json(td, fname)
+        sessions[ssid]['tasks'][stid] = dict()
+        sessions[ssid]['tasks'][stid]['td']    = td
+        sessions[ssid]['tasks'][stid]['state'] = 'New'
+
+        _timestamp(ssid)
     
     return {"success" : True, 
-            "swid"    : swid,
-            "cuid"    : cuid,
-            "result"  : "unit '%s' created for workload %s" % (cuid, swid)}
+            "ssid"    : ssid,
+            "stid"    : stid,
+            "result"  : "task '%s' created for swift session %s" % (stid, ssid)}
     
 
 # ------------------------------------------------------------------------------
-# list currently defined units in the workload
-@bottle.route('/swift/workloads/<swid>', method='GET')
-def swift_workload_show(swid=None):
+# list currently defined units in the session
+@bottle.route('/swift/sessions/<ssid>', method='GET')
+def swift_session_list(ssid=None):
 
-    if not swid:
+    if not ssid:
         return {"success" : False, 
-                "swid"    : swid,
-                "error"   : "missing workload id"}
+                "ssid"    : ssid,
+                "error"   : "missing swift session id"}
     
-    workload_dir = '%s/%s/' % (swift_root, swid)
-    if not os.path.exists (workload_dir):
+    # look for in root/<ssid>/
+    if not ssid in sessions:
         return {"success" : False, 
-                "swid"    : swid,
-                "error"   : "workload id %s does not exist" % swid}
+                "ssid"    : ssid,
+                "error"   : "swift session id %s does not exist" % ssid}
+
+    wld = sessions[ssid]['wld']
+    if not os.path.exists(wld):
+        return {"success" : False, 
+                "ssid"    : ssid,
+                "error"   : "swift session %s is inconsistent" % ssid}
 
     ret = dict()
-    ret['cuds'] = list()
-    try:
-        paths = os.listdir(workload_dir)
-        for f in paths:
-            if f.startswith('cu.'):
-                ret['cuds'].append(ru.read_json("%s/%s" % (workload_dir,f)))
-
-    except Exception as e:
-        return {"success" : False, 
-                "swid"    : swid,
-                "error"   : "Exception: %s" % e}
+    ret['tasks'] = dict()
+    for t in sessions[ssid]['tasks']:
+        ret['tasks'][t] = dict()
+        ret['tasks'][t]['state'] = sessions[ssid]['tasks'][t]['state']
 
     bottle.response.content_type = 'application/json'
     return {"success" : True, 
-            "swid"    : swid,
+            "ssid"    : ssid,
             "result"  : ret}
+    
+
+# ------------------------------------------------------------------------------
+# inspect a single task
+@bottle.route('/swift/sessions/<ssid>/<stid>', method='GET')
+def swift_task_state(ssid=None, stid=None):
+
+    if not ssid:
+        return {"success" : False, 
+                "ssid"    : ssid,
+                "stid"    : None,
+                "error"   : "missing swift session id"}
+    
+    if not stid:
+        return {"success" : False, 
+                "ssid"    : ssid,
+                "stid"    : stid,
+                "error"   : "missing swift task id"}
+    
+    if not ssid in sessions:
+        return {"success" : False, 
+                "ssid"    : ssid,
+                "error"   : "swift session id %s does not exist" % ssid}
+
+    if not stid in sessions[ssid]['tasks']:
+        return {"success" : False, 
+                "ssid"    : ssid,
+                "ssid"    : stid,
+                "error"   : "swift task id %s does not exist in session %s" % (stid, ssid)}
+
+
+    with session_lock:
+        ret = sessions[ssid]['tasks'][stid]
+
+
+    bottle.response.content_type = 'application/json'
+    return {"success" : True, 
+            "ssid"    : ssid,
+            "stid"    : stid,
+            "result"  : ret}
+    
+
+# ------------------------------------------------------------------------------
+# inspect a single task
+@bottle.route('/swift/sessions/<ssid>/<stid>', method='DELETE')
+def swift_task_cancel(ssid=None, stid=None):
+
+    # note that this currently only deletes all knowledge about a task, but does
+    # not actually attempt to cancel the task instance
+
+    if not ssid:
+        return {"success" : False, 
+                "ssid"    : ssid,
+                "stid"    : None,
+                "error"   : "missing swift session id"}
+    
+    if not stid:
+        return {"success" : False, 
+                "ssid"    : ssid,
+                "stid"    : stid,
+                "error"   : "missing swift task id"}
+    
+    if not ssid in sessions:
+        return {"success" : False, 
+                "ssid"    : ssid,
+                "error"   : "swift session id %s does not exist" % ssid}
+
+    if not stid in sessions[ssid]['tasks']:
+        return {"success" : False, 
+                "ssid"    : ssid,
+                "ssid"    : stid,
+                "error"   : "swift task id %s does not exist in session %s" % (stid, ssid)}
+
+
+    with session_lock:
+        del(sessions[ssid]['tasks'][stid])
+
+
+    bottle.response.content_type = 'application/json'
+    return {"success" : True, 
+            "ssid"    : ssid,
+            "stid"    : stid,
+            "result"  : "Task %s in session %s deleted" % (stid, ssid)}
     
 
 # ------------------------------------------------------------------------------
 #
 # delete a specific workload
 #
-@bottle.route('/swift/workloads/<swid>', method='DELETE' )
-def swift_workload_delete(swid=None):
+@bottle.route('/swift/sessions/<ssid>', method='DELETE' )
+def swift_session_delete(ssid=None):
 
-    if not swid:
+    # note that this will not cancel any tasks
+
+    if not ssid:
         return {"success" : False, 
-                "swid"    : None,
-                "error"   : "missing workload id"}
+                "ssid"    : ssid,
+                "error"   : "missing swift session id"}
     
-    # remove workloads from tree
-    os.system ('rm    %s/%s/*' % (swift_root, swid))
-    os.system ('rmdir %s/%s/'  % (swift_root, swid))
+    # look for in root/<ssid>/
+    if not ssid in sessions:
+        return {"success" : False, 
+                "ssid"    : ssid,
+                "error"   : "swift session id %s does not exist" % ssid}
 
-    uids[swid] = 0
-    del(swift_runlog[swid])
+    wld = sessions[ssid]['wld']
+    if not os.path.exists(wld):
+        return {"success" : False, 
+                "ssid"    : ssid,
+                "error"   : "swift session %s is inconsistent" % ssid}
+
+
+    with session_lock:
+        del(sessions[ssid])
+        os.system('rm -rf %s/%s' % (root, ssid))
+
 
     return {"success" : True, 
-            "swid"    : swid,
-            "result"  : "workload %s deleted" % swid}
+            "ssid"    : ssid,
+            "result"  : "workload %s deleted" % ssid}
             
-    
-# ------------------------------------------------------------------------------
-#
-# run a specific workload
-#
-@bottle.route('/swift/workloads/<swid>/execute', method='PUT')
-def swift_workload_run(swid=None):
-
-    if not swid:
-        return {"success" : False, 
-                "swid"    : swid,
-                "error"   : "missing workload id"}
-    
-    ret = None
-    try:
-        print "explicit workload run for %s" % swid
-        ret = _run_workload(swid)
-
-    except Exception as e:
-        return {"success" : False, 
-                "swid"    : swid,
-                "error"   : "Exception: %s" % e}
-
-    bottle.response.content_type = 'application/json'
-    return {"success" : True, 
-            "swid"    : swid,
-            "result"  : ret}
     
 # ------------------------------------------------------------------------------
 #
 # Swift will never know if more tasks get submitted, so it cannot sensibly call
 # 'swift_workload_run'.  We thus run a separate thread which watches all
-# workloads, and if a workload did not see any new units added for N seconds, it
+# sessions, and if a workload did not see any new units added for N seconds, it
 # will call run on it.
 #
 # FIXME: any error on workload execution will not be visible to the user of the
@@ -315,55 +477,63 @@ def _workload_watcher(terminate):
 
     print "timed workload watcher started"
 
-    workloads = dict()
-
     while not terminate.is_set():
 
+        for ssid in sessions:
 
-        paths = os.listdir(swift_root)
+          # print "timed workload check for %s" % ssid
 
-        for swid in paths:
+            ts_file = "%s/%s/timestamp" % (root, ssid)
 
-          # print "timed workload check for %s" % swid
-
-            ts_file = "%s/%s/timestamp" % (swift_root, swid)
-
-            if not os.path.exists (ts_file):
+            if not os.path.exists(ts_file):
                 # workload does not need any watching
                 continue
 
-            # no timestamp -- nothing to do
-            last_action = _get_timestamp(swid)
-            if not last_action:
-              # print "timed workload check for %s misses timestamp" % swid
-                continue
-
-            # otherwise we check if enough time passed -- if not, nothing to do
-            if (time.time() - last_action) < swift_timeout:
+            # check if enough time passed -- if not, nothing to do
+            last_action = _get_timestamp(ssid)
+            if (time.time() - last_action) < timeout:
                 print "timed workload check for %s skipped (%.2f < %.2f)" \
-                        % (swid, (time.time() - last_action), swift_timeout)
+                        % (ssid, (time.time() - last_action), timeout)
                 continue
 
             # we should run this workload
             try:
-                print "timed workload run for %s" % swid
-                _run_workload(swid)
+                print "timed workload run for %s" % ssid
+                _run_workload(ssid)
             except Exception as e:
-                print "error on timed workload run for %s: %s" % (swid, e)
+                print "error on timed workload run for %s: %s" % (ssid, e)
 
         # avoid busy loop
         time.sleep(1)
 
 # ------------------------------------------------------------------------------
 #
+# start the workload watcher
 #
 terminate = threading.Event()
-watcher   = threading.Thread (target=_workload_watcher, args=[terminate])
+watcher   = threading.Thread(target=_workload_watcher, args=[terminate])
 watcher.start()
-bottle.run (host='localhost', port=8080, debug=True)
 
+# ------------------------------------------------------------------------------
+#
+# start the bottle main loop.  This will block as long as the service is alive.
+#
+bottle.run(host='localhost', port=8080, debug=True)
+
+
+# ------------------------------------------------------------------------------
+#
+# the service terminated.  We don't have all state on disk, so will not be able
+# to pick up any sessions, workloads or tasks which are currently executed -- so
+# we can just as well clean the slate. but first stop the watcher so that no new
+# workloads get executed...
+#
 terminate.set()
 watcher.join()
+
+# well, we actually don't clean up, so that we can inspect the dir for debug
+# purposes... :P
+# os.system('rm -r %s' % root)
 
 
 # ------------------------------------------------------------------------------

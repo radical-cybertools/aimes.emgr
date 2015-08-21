@@ -1393,7 +1393,7 @@ def execute_run(cfg, run):
 #
 # same for a swift workload
 #
-def execute_swift_workload(cfg, run, swift_workload):
+def execute_swift_workload(cfg, run, swift_workload, swift_cb=None):
     '''TODO
     '''
 
@@ -1478,6 +1478,9 @@ def execute_swift_workload(cfg, run, swift_workload):
                                callback_data=run)
         umgr.register_callback(unit_state_change_cb,
                                callback_data=run)
+
+        if swift_cb:
+            umgr.register_callback(swift_cb)
 
         log_rp(run)
 

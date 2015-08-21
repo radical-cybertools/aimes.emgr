@@ -17,65 +17,75 @@ if len(sys.argv) < 2:
 
 ep = sys.argv[1]
 
-def list_workloads():
-    r = requests.get("%s/swift/workloads/" % ep)
+def list_sessions():
+    r = requests.get("%s/swift/sessions/" % ep)
     print r.json()
 
-def create_workload():
-    r = requests.put("%s/swift/workloads/" % ep)
+def create_session():
+    r = requests.put("%s/swift/sessions/" % ep)
     print r.json()
-    swid = r.json()['swid']
-    print swid
-    return swid
+    ssid = r.json()['ssid']
+    print ssid
+    return ssid
 
-def add_cu(swid):
+def add_task(ssid):
     global cnt
     cnt += 1
-    data = {'cud': '{"executable":"/bin/exe_%03d"}' % cnt}
-    r = requests.put("%s/swift/workloads/%s" % (ep, swid), data) 
+    data = {'td': '{"executable":"/bin/exe_%03d"}' % cnt}
+    r = requests.put("%s/swift/sessions/%s" % (ep, ssid), data) 
     print r.json()
+    return r.json()['stid']
 
-def dump_workload(swid):
-    r = requests.get("%s/swift/workloads/%s" % (ep, swid)) 
+def dump_session(ssid):
+    r = requests.get("%s/swift/sessions/%s" % (ep, ssid)) 
     pprint.pprint(r.json())
 
-def run_workload(swid):
-    r = requests.put("%s/swift/workloads/%s/execute" % (ep, swid)) 
+def check_task(ssid, stid):
+    r = requests.get("%s/swift/sessions/%s/%s" % (ep, ssid, stid)) 
+    pprint.pprint(r.json())
+
+def run_session(ssid):
+    r = requests.put("%s/swift/sessions/%s/execute" % (ep, ssid)) 
     print r.json()
 
-def delete_workload(swid):
-    r = requests.delete("%s/swift/workloads/%s" % (ep, swid)) 
+def delete_session(ssid):
+    r = requests.delete("%s/swift/sessions/%s" % (ep, ssid)) 
     print r.json()
 
 
-list_workloads()
+print ' ---------- list sessions'
+list_sessions()
+tids = list()
 
-# create a workload, and fill it with some CUs.  Then let some time expire so
-# that the workload gets executed by the watcher 
-swid = create_workload()
-add_cu(swid)
-add_cu(swid)
-add_cu(swid)
+# create a session, and begin submitting tasks.  Then let some time expire so
+# that the tasks get executed by the watcher 
+print ' ---------- create session'
+ssid = create_session()
+
+print ' ---------- submit tasks'
+tids.append(add_task(ssid))
+tids.append(add_task(ssid))
+tids.append(add_task(ssid))
+
+print ' ---------- sleep'
 time.sleep(6)
 
-# Now we do the same again, on the same workload.  Only the second batch of
-# units should get executed
-add_cu(swid)
-add_cu(swid)
-add_cu(swid)
-time.sleep(6)
+# Now we do the same again, and this batch should get executed in some seconds,
+# too.
+print ' ---------- submit tasks'
+tids.append(add_task(ssid))
+tids.append(add_task(ssid))
+tids.append(add_task(ssid))
 
-# now we should have two batches of units executing.  We can submit the
-# third one explicitly
+print ' ---------- check tasks'
+check_task(ssid, tids[ 0])
+check_task(ssid, tids[-1])
 
-add_cu(swid)
-add_cu(swid)
-add_cu(swid)
-run_workload(swid)
+print ' ---------- list sessions, dump this session'
+list_sessions()
+dump_session(ssid)
 
-list_workloads()
-dump_workload(swid)
-
-# delete_workload(swid)
-list_workloads()
+# print ' ---------- delete this session, list sessions'
+# delete_session(ssid)
+# list_sessions()
 
