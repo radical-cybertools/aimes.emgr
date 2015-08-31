@@ -77,9 +77,14 @@ tids.append(add_task(ssid))
 tids.append(add_task(ssid))
 tids.append(add_task(ssid))
 
-print ' ---------- check tasks'
-check_task(ssid, tids[ 0])
-check_task(ssid, tids[-1])
+for i in range(3):
+
+    print ' ---------- sleep 10'
+    time.sleep (10)
+
+    print ' ---------- check tasks'
+    check_task(ssid, tids[ 0])
+    check_task(ssid, tids[-1])
 
 print ' ---------- list sessions, dump this session'
 list_sessions()

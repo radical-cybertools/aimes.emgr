@@ -58,6 +58,7 @@ import radical.utils as ru
 config   = ru.read_json('config.json')
 root     = "%s/swift" % config["path"]
 timeout  =  5      # run workload after 10 seconds of idleness
+fake_ttc = 30      # seconds until a faked task execution is declared done
 sessions = dict()  # record running units
 
 # make sure the root exists
@@ -297,8 +298,9 @@ def swift_task_submit(ssid=None):
         fname = '%s/%s.json' % (wld, stid)
         ru.write_json(td, fname)
         sessions[ssid]['tasks'][stid] = dict()
-        sessions[ssid]['tasks'][stid]['td']    = td
-        sessions[ssid]['tasks'][stid]['state'] = 'New'
+        sessions[ssid]['tasks'][stid]['td']      = td
+        sessions[ssid]['tasks'][stid]['state']   = 'New'
+        sessions[ssid]['tasks'][stid]['created'] = time.time()
 
         _timestamp(ssid)
     
@@ -506,13 +508,50 @@ def _workload_watcher(terminate):
         # avoid busy loop
         time.sleep(1)
 
-# ------------------------------------------------------------------------------
-#
 # start the workload watcher
-#
 terminate = threading.Event()
 watcher   = threading.Thread(target=_workload_watcher, args=[terminate])
 watcher.start()
+
+
+# ------------------------------------------------------------------------------
+#
+# fake workload executor
+#
+# NOTE: this is debugging entity, and MUST be removed in production
+#       / experiments etc.  This thread will mark all tasks which are 
+#       older than 30 seconds as DONE.
+#
+def _workload_executor(terminate):
+
+
+    print "timed workload executor started"
+
+    while not terminate.is_set():
+
+        now = time.time()
+
+        with session_lock:
+
+            for ssid in sessions:
+
+                for stid in sessions[ssid]['tasks']:
+
+                    created = sessions[ssid]['tasks'][stid]['created']
+
+                    if  now > (created + fake_ttc) and \
+                        sessions[ssid]['tasks'][stid]['state'] != 'Done':
+                        print 'updating task state: %s:%s : DONE' % (ssid, stid)
+                        sessions[ssid]['tasks'][stid]['state'] = 'Done'
+
+        # avoid busy loop
+        time.sleep(5)
+
+# start the workload executor
+terminate = threading.Event()
+executor  = threading.Thread(target=_workload_executor, args=[terminate])
+executor.start()
+
 
 # ------------------------------------------------------------------------------
 #
@@ -530,6 +569,7 @@ bottle.run(host='localhost', port=8080, debug=True)
 #
 terminate.set()
 watcher.join()
+executor.join()
 
 # well, we actually don't clean up, so that we can inspect the dir for debug
 # purposes... :P
