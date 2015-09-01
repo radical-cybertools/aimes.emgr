@@ -1,13 +1,4 @@
-AIMES Experiments
-=================
+AIMES Execution Manager
+=======================
 
-This repository collects the code used to run the experiments for the AIMES
-project. Each experiment is cataloged by topic and relates to one or more
-papers.
-
-=================================
-Experiment - Execution Strategies
-=================================
-
-Characterize the effectiveness of early and late binding to minimize the time
-to completion of multi-staged, homogeneous and heterogeneous bag of tasks.
+The AIMES execution manager is part of the AIMES middleware. This module implements an execution strategy for a given workload of arbitrary size and duration. Workloads can be specified as [skeletons](https://github.com/applicationskeleton/Skeleton "Application Skeleton GitHub repository") and are executed by means of one or more pilots. Pilots are managed via [RADICAL Pilot](http://radical-cybertools.github.io/radical-pilot/ "RADICAL Pilot homepage") and are instatiated on a set of traget resources described via [bundles](https://github.com/Francis-Liu/aimes.bundle "AIMES Bundle GitHub repository").
