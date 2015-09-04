@@ -16,12 +16,12 @@
         1
     ],
     "project_ids": {
-        "stampede"  : "TG-CCR140028",
-        "trestles"  : "unc100",
-        "gordon"    : "unc101",
-        "blakclight": "unc101",
-        "supermic"  : "TG-CCR140028",
-        "comet"     : "unc100"
+        "xsede.stampede"  : "TG-CCR140028",
+        "xsede.trestles"  : "unc100",
+        "xsede.gordon"    : "unc101",
+        "xsede.blakclight": "unc101",
+        "xsede.supermic"  : "TG-CCR140028",
+        "xsede.comet"     : "unc100"
     },
     "logging": {
         "file": "runtime.log",
@@ -39,7 +39,7 @@
         "username" : "mturilli",
         "resources": {
             "supported": {
-                "hopper.nersc.gov"          : "pbs"
+                # "hopper.nersc.gov"          : "pbs",
                 # "stampede.tacc.xsede.org"   : "slurm",
                 # "comet.sdsc.xsede.org"      : "slurm",
                 # "supermic.cct-lsu.xsede.org": "pbs",

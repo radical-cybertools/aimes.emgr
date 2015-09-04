@@ -208,6 +208,7 @@ def _run_workload(ssid):
         cfg['workload_type']  = config['workload_type']
         cfg['email_template'] = config['logging']['email']['template']
         cfg['recipients']     = config['logging']['email']['recipients']
+        cfg['project_ids']    = config['project_ids']
 
         # we assume a single run. This makes scales, bindings, time_distribs,
         # iterations, and cores unecessary lists. We are going to assume that

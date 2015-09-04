@@ -501,12 +501,15 @@ def derive_execution_stategy_swift(cfg, swift_workload, resources, run):
         strategy['inference']['rp_overhead_time_workflow']
     '''
 
-    ES_PILOT_NUM      =  1
-    ES_PILOT_RESOURCE = 'xsede.stampede'
-    ES_COMPUTE_CORES  =   128
-    ES_COMPUTE_TIME   = 54321
-    ES_STAGING_TIME   = 12345
-    ES_OVERHEAD_TIME  = 01010
+    ES_PILOT_NUM       =  1
+    ES_PILOT_RESOURCE  = 'xsede.stampede'
+    ES_COMPUTE_CORES   =   128
+    ES_COMPUTE_TIME    = 54321
+    ES_STAGING_TIME    = 12345
+    ES_OVERHEAD_TIME   = 01010
+    ES_PCT_CONCURRENCY = 100
+    ES_PCT_RESOURCES   = 100
+    ES_RP_SCHEDULER    = 'SCHED_DIRECT_SUBMISSION'
 
     # TODO: infer those numbers from the given workload / set of resources
     # / external information.  To do so, submit an AIMES-3 proposal to NSF.
@@ -515,7 +518,10 @@ def derive_execution_stategy_swift(cfg, swift_workload, resources, run):
             'number_pilots'             : ES_PILOT_NUM,
             'compute_time_workflow'     : ES_COMPUTE_TIME,
             'staging_time_workflow'     : ES_STAGING_TIME,
-            'rp_overhead_time_workflow' : ES_OVERHEAD_TIME
+            'rp_overhead_time_workflow' : ES_OVERHEAD_TIME,
+            'percentage_concurrency'    : ES_PCT_CONCURRENCY,
+            'percentage_resources'      : ES_PCT_RESOURCES,
+            'rp_scheduler'              : ES_RP_SCHEDULER
             }
 
     strategy = {'heuristic' : info,
@@ -536,13 +542,13 @@ def derive_pilot_descriptions(cfg, strategy):
     # the number of resources.
     for resource in strategy['inference']['target_resources']:
 
-        if not resource in cfg['resources']:
-            print "ERROR: No configuration for resource %s." % resource
-            sys.exit(1)
+        # if not resource in cfg['resources']:
+        #     print "ERROR: No configuration for resource %s." % resource
+        #     sys.exit(1)
 
         pdesc = rp.ComputePilotDescription()
 
-        pdesc.project  = cfg['resources'][resource]['project']
+        pdesc.project  = cfg['project_ids'][resource]
         pdesc.resource = resource  # label
 
         # Select a specific queue for hopper. This will become another
