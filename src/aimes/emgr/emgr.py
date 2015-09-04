@@ -20,6 +20,7 @@ import sys
 import math
 import time
 import random
+import logging
 import smtplib
 import datetime
 import traceback
@@ -1404,6 +1405,8 @@ def execute_swift_workload(cfg, run, swift_workload, swift_cb=None):
   # pprint.pprint(swift_workload)
   # return 'wohoo!'
 
+    session = None
+
     try:
 
         run['state'] = 'ACTIVE'
@@ -1497,11 +1500,8 @@ def execute_swift_workload(cfg, run, swift_workload, swift_cb=None):
 
     except Exception as e:
         # this catches all RP and system exceptions
-        print "Caught exception: %s" % e
-        traceback.print_exc()
-
+        logging.exception('swift workload execution failed')
         run['state'] = 'FAILED'
-
         raise
 
     except (KeyboardInterrupt, SystemExit) as e:
@@ -1509,17 +1509,16 @@ def execute_swift_workload(cfg, run, swift_workload, swift_cb=None):
         # KeyboardInterrupt exception for shutdown.  We also catch
         # SystemExit which gets raised if the main threads exits for
         # some other reason.
-        print "Caught exception, exit now: %s" % e
-
+        logging.exception('swift workload execution aborted')
         run['state'] = 'FAILED'
-
         raise
 
     finally:
         # always clean up the session, no matter whether we caught an
         # exception
         record_run_state(run)
-        session.close(cleanup=False, terminate=True)
+        if session:
+            session.close(cleanup=False, terminate=True)
 
         email_report(cfg, run)
 
