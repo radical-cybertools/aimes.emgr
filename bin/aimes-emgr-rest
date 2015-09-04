@@ -186,13 +186,15 @@ def _run_workload(ssid):
         # FIXME: The mapping between two conf structures is redundant. Keep only
         # config.
         cfg['scales']         = [len(sw['cuds'])]
-        cfg['bindings']       = str(config['bindings'])
+        cfg['bindings']       = config['bindings']
         cfg['cores']          = config['cores']
-        cfg['time_distrib']   = str(config['time_distribs'])
+        cfg['time_distrib']   = config['time_distribs']
         cfg['iterations']     = config['iterations']
         cfg['rerun_attempts'] = 1
 
+        cfg['bundle_username']    = config['bundle']['username']
         cfg['bundle_dburl']       = config['bundle']['mongodb']
+        cfg['bundle_template']    = config['bundle']['template']
         cfg['bundle_origin']      = config['bundle']['origin']
         cfg['bundle_resources']   = config['bundle']['resources']['supported']
         cfg['bundle_unsupported'] = config['bundle']['resources']['unsupported']
@@ -207,11 +209,15 @@ def _run_workload(ssid):
         if (len(cfg['scales']) > 1 or len(cfg['bindings']) > 1 or
                 len(cfg['time_distrib']) > 1 or len(cfg['iterations']) > 1 or
                 len(cfg['cores']) > 1):
+            print "Multiple scales, bindings, time distributions, iterations, \
+                   and number of cores not supported in this execution mode"
             pass
         else:
-            run = aimes.emgr.create_run_environment(cfg, [cfg['scales'],
-                    cfg['bindings'], cfg['time_distrib'], cfg['iterations'],
-                    cfg['rerun_attempts'], cfg['cores']], 1, 1)
+            run = aimes.emgr.create_run_environment(cfg,
+                        [cfg['scales'][0], cfg['bindings'][0],
+                         cfg['time_distrib'][0], cfg['iterations'][0],
+                         cfg['rerun_attempts'], cfg['cores'][0]],
+                        1, 1)
 
         # we are not really interested in the workload execution result -- we
         # watch the individual units.  So we execute the workload in the
