@@ -89,8 +89,9 @@ def create_run_environment(cfg, run_cfg, tracker, q_qsize):
     run['runtime'] = initialize_runtime(run)
 
     # Write the configuration file of the skeleton for this run.
-    write_skeleton_conf(cfg, run['scale'], run['cores'], run['uniformity'],
-                        run['files']['skeleton'])
+    if cfg['workload_type'] == 'skeleton':
+        write_skeleton_conf(cfg, run['scale'], run['cores'], run['uniformity'],
+                            run['files']['skeleton'])
 
     # Write the configuration file of the skeleton for this run.
     write_bundle_conf(cfg, run['binding'], run['files']['bundle'])

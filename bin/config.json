@@ -1,6 +1,8 @@
 {
-    "path"       : "data/",
-    "mongodb"    : "mongodb://54.221.194.147:24242/swift_aimes",
+    "path"         : "data/",
+    "mongodb"      : "mongodb://54.221.194.147:24242/swift_aimes",
+    "workload_type": "swift",
+    "logfile"      : "runtime.log",
     "bindings": [
         "late"
     ],
