@@ -182,8 +182,6 @@ def _run_workload(ssid):
         #           can actually start managing things.
         import aimes.emgr
 
-        print sw['cuds']
-
         cfg = {}
 
         cfg['scales']         = [len(sw['cuds'])]
