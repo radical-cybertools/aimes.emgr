@@ -15,11 +15,18 @@ if len(sys.argv) < 2:
     print "\n\n\tusage: %s <rest-endpoint>\n\n" % sys.argv[0]
     sys.exit(-1)
 
+if sys.argv[1][-1:] == '/':
+    print "\n\n\trest endpoint %s must not end by '/'\n\n" % sys.argv[1]
+    sys.exit(-1)
+
 ep = sys.argv[1]
+
 
 def list_sessions():
     r = requests.get("%s/swift/sessions/" % ep)
+    print r
     print r.json()
+
 
 def create_session():
     r = requests.put("%s/swift/sessions/" % ep)
@@ -28,39 +35,44 @@ def create_session():
     print ssid
     return ssid
 
+
 def add_task(ssid):
     global cnt
     cnt += 1
     data = {'td': '{"executable":"/bin/exe_%03d"}' % cnt}
-    r = requests.put("%s/swift/sessions/%s" % (ep, ssid), data) 
+    r = requests.put("%s/swift/sessions/%s" % (ep, ssid), data)
     print r.json()
     return r.json()['stid']
 
+
 def dump_session(ssid):
-    r = requests.get("%s/swift/sessions/%s" % (ep, ssid)) 
+    r = requests.get("%s/swift/sessions/%s" % (ep, ssid))
     pprint.pprint(r.json())
+
 
 def check_task(ssid, stid):
-    r = requests.get("%s/swift/sessions/%s/%s" % (ep, ssid, stid)) 
+    r = requests.get("%s/swift/sessions/%s/%s" % (ep, ssid, stid))
     pprint.pprint(r.json())
 
+
 def run_session(ssid):
-    r = requests.put("%s/swift/sessions/%s/execute" % (ep, ssid)) 
+    r = requests.put("%s/swift/sessions/%s/execute" % (ep, ssid))
     print r.json()
+
 
 def delete_session(ssid):
-    r = requests.delete("%s/swift/sessions/%s" % (ep, ssid)) 
+    r = requests.delete("%s/swift/sessions/%s" % (ep, ssid))
     print r.json()
 
+
+# create a session, and begin submitting tasks.  Then let some time expire so
+# that the tasks get executed by the watcher
+print ' ---------- create session'
+ssid = create_session()
 
 print ' ---------- list sessions'
 list_sessions()
 tids = list()
-
-# create a session, and begin submitting tasks.  Then let some time expire so
-# that the tasks get executed by the watcher 
-print ' ---------- create session'
-ssid = create_session()
 
 print ' ---------- submit tasks'
 tids.append(add_task(ssid))
