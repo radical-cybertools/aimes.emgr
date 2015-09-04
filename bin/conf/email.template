@@ -1,0 +1,21 @@
+${RUN_TAG}
+
+Experiment
+----------
+
+Bag size: ${SCALE}
+Binding: ${BINDING}
+Distribution of task duration: ${UNIFORMITY}
+Number of repetitions: ${ITERATION}
+Number of reruns: ${RERUN}
+
+Libraries
+---------
+
+Radical pilot: ${RP_VERSION}
+Saga python: ${SP_VERSION}
+Radical utils: ${RU_VERSION}
+
+Confirm archiving
+-----------------
+
