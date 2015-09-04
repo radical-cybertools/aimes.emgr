@@ -206,6 +206,8 @@ def _run_workload(ssid):
         cfg['rp_dburl']       = config['mongodb']
         cfg['experiment_log'] = config['logfile']
         cfg['workload_type']  = config['workload_type']
+        cfg['email_template'] = config['logging']['email']['template']
+        cfg['recipients']     = config['logging']['email']['recipients']
 
         # we assume a single run. This makes scales, bindings, time_distribs,
         # iterations, and cores unecessary lists. We are going to assume that
