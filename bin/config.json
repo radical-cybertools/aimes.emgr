@@ -39,19 +39,19 @@
         "username" : "mturilli",
         "resources": {
             "supported": {
-                "hopper.nersc.gov"          : "pbs",
-                "stampede.tacc.xsede.org"   : "slurm",
-                "comet.sdsc.xsede.org"      : "slurm",
-                "supermic.cct-lsu.xsede.org": "pbs",
-                "trestles.sdsc.xsede.org"   : "pbs",
-                "blacklight.psc.xsede.org"  : "pbs",
-                "gordon.sdsc.xsede.org"     : "pbs"
+                "hopper.nersc.gov"          : "pbs"
+                # "stampede.tacc.xsede.org"   : "slurm",
+                # "comet.sdsc.xsede.org"      : "slurm",
+                # "supermic.cct-lsu.xsede.org": "pbs",
+                # "trestles.sdsc.xsede.org"   : "pbs",
+                # "blacklight.psc.xsede.org"  : "pbs",
+                # "gordon.sdsc.xsede.org"     : "pbs"
             },
             "unsupported": {
-                "supermic.cct-lsu.xsede.org": {
-                    "sched": "pbs",
-                    "fconf": "conf/lsu.supermic.json"
-                },
+                # "supermic.cct-lsu.xsede.org": {
+                #     "sched": "pbs",
+                #     "fconf": "conf/lsu.supermic.json"
+                # },
                 "comet.sdsc.xsede.org": {
                     "sched": "slurm",
                     "fconf": "conf/xsede.comet.json"

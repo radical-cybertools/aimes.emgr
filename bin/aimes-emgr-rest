@@ -185,6 +185,10 @@ def _run_workload(ssid):
 
         # FIXME: The mapping between two conf structures is redundant. Keep only
         # config.
+        cfg['rp_dburl']       = config['mongodb']
+        cfg['experiment_log'] = config['logfile']
+        cfg['workload_type']  = config['workload_type']
+
         cfg['scales']         = [len(sw['cuds'])]
         cfg['bindings']       = config['bindings']
         cfg['cores']          = config['cores']
@@ -199,6 +203,7 @@ def _run_workload(ssid):
         cfg['bundle_resources']   = config['bundle']['resources']['supported']
         cfg['bundle_unsupported'] = config['bundle']['resources']['unsupported']
 
+        cfg['rp_dburl']       = config['mongodb']
         cfg['experiment_log'] = config['logfile']
         cfg['workload_type']  = config['workload_type']
 
