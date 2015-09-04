@@ -513,7 +513,7 @@ def derive_execution_stategy_swift(cfg, swift_workload, resources, run):
 
     # TODO: infer those numbers from the given workload / set of resources
     # / external information.  To do so, submit an AIMES-3 proposal to NSF.
-    info = {'target_resources'          : ES_PILOT_RESOURCE,
+    info = {'target_resources'          : [ES_PILOT_RESOURCE],
             'cores_workflow'            : ES_COMPUTE_CORES,
             'number_pilots'             : ES_PILOT_NUM,
             'compute_time_workflow'     : ES_COMPUTE_TIME,
@@ -930,7 +930,9 @@ def log_cu_descriptions(cfg, run, workflow):
 
     print >> f, "%s\n%s\n%s\n\n" % (separator, title, separator)
 
-    print >> f, "Total tasks submitted  : %d" % workflow['skeleton_tasks']
+    if cfg['workload_type'] == 'skeleton':
+        print >> f, "Total tasks submitted  : %d" % workflow['skeleton_tasks']
+
     print >> f, "Total CU translated    : %d" % len(cuds)
 
     for core in cfg['cores']:
@@ -941,20 +943,22 @@ def log_cu_descriptions(cfg, run, workflow):
     print >> f, "Print the first units for reference:"
 
     # for cud in cuds[0:4]:
-    for cud in cuds:
+    if cfg['workload_type'] == 'skeleton':
 
-        print >> f, "%s:" % cud.name
-        print >> f, "\tExecutable           : %s" % cud.executable
-        print >> f, "\tArguments executable : %s" % cud.arguments
-        print >> f, "\tNumber of cores      : %s" % cud.cores
-        print >> f, "\tPre-execution        : %s" % cud.pre_exec
-        print >> f, "\tInput staging        : %s" % cud.input_staging
-        print >> f, "\tOutput staging       : %s" % cud.output_staging
-        print >> f, "\tCleanup              : %s" % cud.cleanup
+        for cud in cuds:
 
-        print >> f, ''
+            print >> f, "%s:" % cud.name
+            print >> f, "\tExecutable           : %s" % cud.executable
+            print >> f, "\tArguments executable : %s" % cud.arguments
+            print >> f, "\tNumber of cores      : %s" % cud.cores
+            print >> f, "\tPre-execution        : %s" % cud.pre_exec
+            print >> f, "\tInput staging        : %s" % cud.input_staging
+            print >> f, "\tOutput staging       : %s" % cud.output_staging
+            print >> f, "\tCleanup              : %s" % cud.cleanup
 
-    print >> f, "\n"
+            print >> f, ''
+
+        print >> f, "\n"
 
     f.flush()
     os.fsync(f)
