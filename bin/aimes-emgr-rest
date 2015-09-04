@@ -5,7 +5,7 @@ import errno
 import time
 import glob
 import json
-import bottle 
+import bottle
 import threading
 
 import radical.utils as ru
@@ -57,7 +57,7 @@ import radical.utils as ru
 #
 config   = ru.read_json('config.json')
 root     = "%s/swift" % config["path"]
-timeout  =  5      # run workload after 10 seconds of idleness
+timeout  = 5       # run workload after 10 seconds of idleness
 fake_ttc = 30      # seconds until a faked task execution is declared done
 sessions = dict()  # record running units
 
@@ -181,7 +181,21 @@ def _run_workload(ssid):
         # FIXME MT: we need config files and a 'run' struct here, so that emgr
         #           can actually start managing things.
         import aimes.emgr
-        cfg = 1
+
+        cfg = []
+
+        cfg['scales']         = len(sw['cuds'])
+        cfg['bindings']       = config['bindings']
+        cfg['cores']          = config['cores']
+        cfg['time_distrib']   = config['time_distribs']
+        cfg['iterations']     = config['iterations']
+        cfg['rerun_attempts'] = 1
+
+        cfg['bundle_resources']   = config['bundle']['resources']['supported']
+        cfg['bundle_unsupported'] = config['bundle']['resources']['unsupported']
+
+        cfg['bundle_dburl'] = config['bundle']['mongodb']
+
         run = 2
 
         # we are not really interested in the workload execution result -- we
@@ -216,9 +230,9 @@ def _run_workload(ssid):
 def swift_session_list():
 
     with session_lock:
-        return {"success" : True  , 
+        return {"success" : True  ,
                 "paths"   : sessions.keys() }
-    
+
 
 # ------------------------------------------------------------------------------
 # create a new swift workload
@@ -229,10 +243,10 @@ def swift_session_create():
                           mode=ru.ID_CUSTOM)
 
     if os.path.exists('%s/%s/' % (root, ssid)):
-        return {"success" : False, 
+        return {"success" : False,
                 "ssid"    : ssid,
                 "error"   : "swift session '%s' exists" % ssid}
-    
+
     with session_lock:
         sessions[ssid]            = dict()
         sessions[ssid]['tasks']   = dict()
@@ -241,7 +255,7 @@ def swift_session_create():
         sessions[ssid]['wlcnt']   = 0       # counter for generating workload IDs
         sessions[ssid]['cwd']     = "%s/%s"          % (root, ssid)
         sessions[ssid]['wld']     = "%s/%s/workload" % (root, ssid)
-    
+
         # create the first workload dir, and link 'workload' to it
         cwd = sessions[ssid]['cwd']
         wld = sessions[ssid]['wld']
@@ -249,10 +263,10 @@ def swift_session_create():
         mkdir('%s/%s/%s' % (root, ssid, wl_name))
         link (cwd, wl_name, 'workload')
 
-    return {"success" : True, 
+    return {"success" : True,
             "ssid"    : ssid,
             "result"  : "swift session '%s' has been created" % ssid}
-    
+
 
 # ------------------------------------------------------------------------------
 # add a task to a swift workload
@@ -260,21 +274,21 @@ def swift_session_create():
 def swift_task_submit(ssid=None):
 
     if not ssid:
-        return {"success" : False, 
+        return {"success" : False,
                 "ssid"    : ssid,
                 "stid"    : None,
                 "error"   : "missing swift session id"}
-    
+
     # look for in root/<ssid>/
     if not ssid in sessions:
-        return {"success" : False, 
+        return {"success" : False,
                 "ssid"    : ssid,
                 "stid"    : None,
                 "error"   : "swift session id %s does not exist" % ssid}
 
     wld = sessions[ssid]['wld']
     if not os.path.exists(wld):
-        return {"success" : False, 
+        return {"success" : False,
                 "ssid"    : ssid,
                 "stid"    : None,
                 "error"   : "swift session %s is inconsistent" % ssid}
@@ -282,7 +296,7 @@ def swift_task_submit(ssid=None):
     td = json.loads(bottle.request.forms.get("td"))
 
     if not td:
-        return {"success" : False, 
+        return {"success" : False,
                 "ssid"    : ssid,
                 "stid"    : None,
                 "error"   : "missing task description"}
@@ -303,12 +317,12 @@ def swift_task_submit(ssid=None):
         sessions[ssid]['tasks'][stid]['created'] = time.time()
 
         _timestamp(ssid)
-    
-    return {"success" : True, 
+
+    return {"success" : True,
             "ssid"    : ssid,
             "stid"    : stid,
             "result"  : "task '%s' created for swift session %s" % (stid, ssid)}
-    
+
 
 # ------------------------------------------------------------------------------
 # list currently defined units in the session
@@ -316,19 +330,19 @@ def swift_task_submit(ssid=None):
 def swift_session_list(ssid=None):
 
     if not ssid:
-        return {"success" : False, 
+        return {"success" : False,
                 "ssid"    : ssid,
                 "error"   : "missing swift session id"}
-    
+
     # look for in root/<ssid>/
     if not ssid in sessions:
-        return {"success" : False, 
+        return {"success" : False,
                 "ssid"    : ssid,
                 "error"   : "swift session id %s does not exist" % ssid}
 
     wld = sessions[ssid]['wld']
     if not os.path.exists(wld):
-        return {"success" : False, 
+        return {"success" : False,
                 "ssid"    : ssid,
                 "error"   : "swift session %s is inconsistent" % ssid}
 
@@ -339,10 +353,10 @@ def swift_session_list(ssid=None):
         ret['tasks'][t]['state'] = sessions[ssid]['tasks'][t]['state']
 
     bottle.response.content_type = 'application/json'
-    return {"success" : True, 
+    return {"success" : True,
             "ssid"    : ssid,
             "result"  : ret}
-    
+
 
 # ------------------------------------------------------------------------------
 # inspect a single task
@@ -350,24 +364,24 @@ def swift_session_list(ssid=None):
 def swift_task_state(ssid=None, stid=None):
 
     if not ssid:
-        return {"success" : False, 
+        return {"success" : False,
                 "ssid"    : ssid,
                 "stid"    : None,
                 "error"   : "missing swift session id"}
-    
+
     if not stid:
-        return {"success" : False, 
+        return {"success" : False,
                 "ssid"    : ssid,
                 "stid"    : stid,
                 "error"   : "missing swift task id"}
-    
+
     if not ssid in sessions:
-        return {"success" : False, 
+        return {"success" : False,
                 "ssid"    : ssid,
                 "error"   : "swift session id %s does not exist" % ssid}
 
     if not stid in sessions[ssid]['tasks']:
-        return {"success" : False, 
+        return {"success" : False,
                 "ssid"    : ssid,
                 "ssid"    : stid,
                 "error"   : "swift task id %s does not exist in session %s" % (stid, ssid)}
@@ -378,11 +392,11 @@ def swift_task_state(ssid=None, stid=None):
 
 
     bottle.response.content_type = 'application/json'
-    return {"success" : True, 
+    return {"success" : True,
             "ssid"    : ssid,
             "stid"    : stid,
             "result"  : ret}
-    
+
 
 # ------------------------------------------------------------------------------
 # inspect a single task
@@ -393,24 +407,24 @@ def swift_task_cancel(ssid=None, stid=None):
     # not actually attempt to cancel the task instance
 
     if not ssid:
-        return {"success" : False, 
+        return {"success" : False,
                 "ssid"    : ssid,
                 "stid"    : None,
                 "error"   : "missing swift session id"}
-    
+
     if not stid:
-        return {"success" : False, 
+        return {"success" : False,
                 "ssid"    : ssid,
                 "stid"    : stid,
                 "error"   : "missing swift task id"}
-    
+
     if not ssid in sessions:
-        return {"success" : False, 
+        return {"success" : False,
                 "ssid"    : ssid,
                 "error"   : "swift session id %s does not exist" % ssid}
 
     if not stid in sessions[ssid]['tasks']:
-        return {"success" : False, 
+        return {"success" : False,
                 "ssid"    : ssid,
                 "ssid"    : stid,
                 "error"   : "swift task id %s does not exist in session %s" % (stid, ssid)}
@@ -421,11 +435,11 @@ def swift_task_cancel(ssid=None, stid=None):
 
 
     bottle.response.content_type = 'application/json'
-    return {"success" : True, 
+    return {"success" : True,
             "ssid"    : ssid,
             "stid"    : stid,
             "result"  : "Task %s in session %s deleted" % (stid, ssid)}
-    
+
 
 # ------------------------------------------------------------------------------
 #
@@ -437,19 +451,19 @@ def swift_session_delete(ssid=None):
     # note that this will not cancel any tasks
 
     if not ssid:
-        return {"success" : False, 
+        return {"success" : False,
                 "ssid"    : ssid,
                 "error"   : "missing swift session id"}
-    
+
     # look for in root/<ssid>/
     if not ssid in sessions:
-        return {"success" : False, 
+        return {"success" : False,
                 "ssid"    : ssid,
                 "error"   : "swift session id %s does not exist" % ssid}
 
     wld = sessions[ssid]['wld']
     if not os.path.exists(wld):
-        return {"success" : False, 
+        return {"success" : False,
                 "ssid"    : ssid,
                 "error"   : "swift session %s is inconsistent" % ssid}
 
@@ -459,11 +473,11 @@ def swift_session_delete(ssid=None):
         os.system('rm -rf %s/%s' % (root, ssid))
 
 
-    return {"success" : True, 
+    return {"success" : True,
             "ssid"    : ssid,
             "result"  : "workload %s deleted" % ssid}
-            
-    
+
+
 # ------------------------------------------------------------------------------
 #
 # Swift will never know if more tasks get submitted, so it cannot sensibly call
@@ -519,7 +533,7 @@ watcher.start()
 # fake workload executor
 #
 # NOTE: this is debugging entity, and MUST be removed in production
-#       / experiments etc.  This thread will mark all tasks which are 
+#       / experiments etc.  This thread will mark all tasks which are
 #       older than 30 seconds as DONE.
 #
 def _workload_executor(terminate):

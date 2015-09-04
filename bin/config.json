@@ -4,10 +4,13 @@
     "bindings": [
         "late"
     ],
-    "time_distributions": [
+    "time_distribs": [
         "uniform"
     ],
     "iterations": [
+        1
+    ],
+    "cores": [
         1
     ],
     "project_ids": {
@@ -27,7 +30,7 @@
             ]
         }
     },
-    "bundles": {
+    "bundle": {
         "mongodb"  : "mongodb://54.221.194.147:24242/swift_aimes_bundle",
         "template" : "./conf/bundle.template",
         "origin"   : "107.21.218.167",
@@ -45,15 +48,15 @@
             "unsupported": {
                 "supermic.cct-lsu.xsede.org": {
                     "sched": "pbs",
-                    "fconf": "conf/lsu.supermic.json",
+                    "fconf": "conf/lsu.supermic.json"
                 },
                 "comet.sdsc.xsede.org": {
                     "sched": "slurm",
-                    "fconf": "conf/xsede.comet.json",
-                },
+                    "fconf": "conf/xsede.comet.json"
+                }
             },
-            "early": "stampede",
-        },
+            "early": "stampede"
+        }
     },
     "skeleton": {
         "templete"     : "./conf/skeleton.template",
@@ -61,7 +64,7 @@
             "max": 1800,
             "min": 60,
             "avg": 900,
-            "std": 300,
+            "std": 300
         }
     }
 }

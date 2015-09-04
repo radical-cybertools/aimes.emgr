@@ -19,7 +19,6 @@ import os
 import sys
 import math
 import time
-import Queue
 import random
 import smtplib
 import datetime
