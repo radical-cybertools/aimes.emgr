@@ -1396,12 +1396,12 @@ def execute_swift_workload(cfg, run, swift_workload, swift_cb=None):
     '''TODO
     '''
 
-    print 'execute swift workload'
-    import pprint
-    pprint.pprint(cfg)
-    pprint.pprint(run)
-    pprint.pprint(swift_workload)
-    return 'wohoo!'
+  # print 'execute swift workload'
+  # import pprint
+  # pprint.pprint(cfg)
+  # pprint.pprint(run)
+  # pprint.pprint(swift_workload)
+  # return 'wohoo!'
 
     try:
 

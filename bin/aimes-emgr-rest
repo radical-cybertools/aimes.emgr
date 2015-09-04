@@ -55,7 +55,7 @@ import radical.utils as ru
 #
 # read configuration
 #
-config   = ru.read_json('config.json')
+config   = ru.read_json('%s/config.json' % os.path.dirname(__file__))
 root     = "%s/swift" % config["path"]
 timeout  = 5       # run workload after 10 seconds of idleness
 fake_ttc = 30      # seconds until a faked task execution is declared done
@@ -571,10 +571,9 @@ def _workload_executor(terminate):
         # avoid busy loop
         time.sleep(5)
 
-# start the workload executor
-terminate = threading.Event()
-executor  = threading.Thread(target=_workload_executor, args=[terminate])
-executor.start()
+# # start the workload executor
+# executor  = threading.Thread(target=_workload_executor, args=[terminate])
+# executor.start()
 
 
 # ------------------------------------------------------------------------------
@@ -593,7 +592,7 @@ bottle.run(host='localhost', port=8080, debug=True)
 #
 terminate.set()
 watcher.join()
-executor.join()
+# executor.join()
 
 # well, we actually don't clean up, so that we can inspect the dir for debug
 # purposes... :P
