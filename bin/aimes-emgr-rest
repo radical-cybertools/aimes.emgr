@@ -113,12 +113,14 @@ def _get_timestamp(ssid):
 #
 def _state_cb(unit, state):
 
+    unit_d = unit.as_dict()
+
     # we dig the ssid and stid out of the unit name
-    if not unit['name'] or not ':' in unit['name']:
-        print "state_cb: invalid units name: %s" % unit['name']
+    if not unit_d['name'] or not ':' in unit_d['name']:
+        print "state_cb: invalid units name: %s" % unit_d['name']
         return True
 
-    ssid, stid = unit['name'].split(':', 1)
+    ssid, stid = unit_d['name'].split(':', 1)
 
     with session_lock:
 

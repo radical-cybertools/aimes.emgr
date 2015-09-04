@@ -39,7 +39,10 @@ def create_session():
 def add_task(ssid):
     global cnt
     cnt += 1
-    data = {'td': '{"executable":"/bin/exe_%03d"}' % cnt}
+    cud = {"executable" : "/bin/sleep",
+           "arguments"  : ["%d" % cnt],
+           "cores"      : 1}
+    data = {'td': json.dumps(cud)}
     r = requests.put("%s/swift/sessions/%s" % (ep, ssid), data)
     print r.json()
     return r.json()['stid']
@@ -53,6 +56,10 @@ def dump_session(ssid):
 def check_task(ssid, stid):
     r = requests.get("%s/swift/sessions/%s/%s" % (ep, ssid, stid))
     pprint.pprint(r.json())
+    if r.json()['result']['state'].lower() in ['done', 'canceled', 'failed']:
+        return True
+    else:
+        return False
 
 
 def run_session(ssid):
@@ -89,15 +96,22 @@ tids.append(add_task(ssid))
 tids.append(add_task(ssid))
 tids.append(add_task(ssid))
 
-for i in range(3):
+while True:
 
-    print ' ---------- sleep 10'
-    time.sleep (10)
+    # we wait for all tasks to finish
+    all_finished = True
+    for tid in tids:
+        if not check_task(ssid, tids[-1]):
+            all_finished = False
+            break
 
-    print ' ---------- check tasks'
-    check_task(ssid, tids[ 0])
-    check_task(ssid, tids[-1])
+    if all_finished:
+        break
+    else:
+        print ' ---------- sleep 3'
+        time.sleep (3)
 
+print ' ---------- all tasks are final'
 print ' ---------- list sessions, dump this session'
 list_sessions()
 dump_session(ssid)

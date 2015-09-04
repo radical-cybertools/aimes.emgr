@@ -679,7 +679,15 @@ def derive_cu_descriptions_swift(cfg, run, swift_workload):
     cuds = {'all': list()}
 
     for cud in swift_workload['cuds']:
-        cuds['all'].append(cud)
+
+        if isinstance(cud, dict):
+            rp_cud = rp.ComputeUnitDescription()
+            for k,v in cud.items():
+                rp_cud.set_attribute(k, v)
+
+            cuds['all'].append(rp_cud)
+        else:
+            cuds['all'].append(cud)
 
     # Shuffle the list of CU descriptions so to minimize the impact of the
     # list ordering on the ordering of the scheduling on one or more pilots.
@@ -1409,10 +1417,10 @@ def execute_swift_workload(cfg, run, swift_workload, swift_cb=None):
     '''
 
   # print 'execute swift workload'
-  # import pprint
+    import pprint
   # pprint.pprint(cfg)
   # pprint.pprint(run)
-  # pprint.pprint(swift_workload)
+    pprint.pprint(swift_workload)
   # return 'wohoo!'
 
     session = None
