@@ -191,12 +191,22 @@ def _run_workload(ssid):
         cfg['iterations']     = config['iterations']
         cfg['rerun_attempts'] = 1
 
+        cfg['bundle_dburl']       = config['bundle']['mongodb']
+        cfg['bundle_origin']      = config['bundle']['origin']
         cfg['bundle_resources']   = config['bundle']['resources']['supported']
         cfg['bundle_unsupported'] = config['bundle']['resources']['unsupported']
 
-        cfg['bundle_dburl'] = config['bundle']['mongodb']
+        # we assume a single run. This makes scales, bindings, time_distribs,
+        # iterations, and cores unecessary lists. We are going to assume that
+        # each list as a single value otherwise we trow an error.
 
-        run = 2
+        if (len(cfg['scales']) > 1 or len(cfg['bindings']) > 1 or
+            len(cfg['time_distrib']) > 1 or len(cfg['iterations']) > 1 or
+            len(cfg['cores']) > 1):
+            pass
+        else:
+            run = [cfg['scales'], cfg['bindings'], cfg['time_distrib'],
+                   cfg['iterations'], cfg['rerun_attempts'], cfg['cores']]
 
         # we are not really interested in the workload execution result -- we
         # watch the individual units.  So we execute the workload in the
