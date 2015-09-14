@@ -28,7 +28,7 @@
         "email": {
             "template": "./conf/email.template",
             "recipients": [
-                "matteo.turilli@gmail.com"
+              # "matteo.turilli@gmail.com"
             ]
         }
     },
