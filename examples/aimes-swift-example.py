@@ -55,7 +55,9 @@ def dump_session(ssid):
 
 def check_task(ssid, stid):
     r = requests.get("%s/swift/sessions/%s/%s" % (ep, ssid, stid))
-    pprint.pprint(r.json())
+  # pprint.pprint(r.json())
+    print 'task %s: %s' % (stid, r.json()['result']['state'])
+
     if r.json()['result']['state'].lower() in ['done', 'canceled', 'failed']:
         return True
     else:
@@ -101,15 +103,13 @@ while True:
     # we wait for all tasks to finish
     all_finished = True
     for tid in tids:
-        if not check_task(ssid, tids[-1]):
+        if not check_task(ssid, tid):
             all_finished = False
-            break
-
     if all_finished:
         break
     else:
-        print ' ---------- sleep 3'
-        time.sleep (3)
+        print ' ---------- sleep 10'
+        time.sleep (10)
 
 print ' ---------- all tasks are final'
 print ' ---------- list sessions, dump this session'
