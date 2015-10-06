@@ -502,7 +502,7 @@ def derive_execution_stategy_swift(cfg, swift_workload, resources, run):
     '''
 
     ES_PILOT_NUM       =  1
-    ES_PILOT_RESOURCE  = 'xsede.stampede'
+    ES_PILOT_RESOURCE  = 'xsede.comet'
     ES_COMPUTE_CORES   =   128
     ES_COMPUTE_TIME    = 54321
     ES_STAGING_TIME    = 12345
