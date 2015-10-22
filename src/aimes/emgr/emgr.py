@@ -1149,6 +1149,12 @@ def email_report(cfg, run):
     '''Pass.
     '''
 
+    # only go thrtough the hazzle of SMTP setup if we have anything to send in
+    # the first place
+    if not cfg['recipients']:
+        return
+
+
     attachments = []
 
     subject = '[AIMES experiment] Run %s/-%s (%s) - %s' % \

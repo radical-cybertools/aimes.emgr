@@ -132,7 +132,7 @@ def _state_cb(unit, state):
             print "state_cb: invalid task id: %s" % stid
             return True
 
-        print 'updating task state: %s:%s : %s' % (ssid, stid, state)
+        print 'state_cb: updating task state: %s:%s : %s' % (ssid, stid, state)
         sessions[ssid]['tasks'][stid]['state'] = state
         return True
 
