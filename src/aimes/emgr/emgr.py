@@ -629,7 +629,8 @@ def derive_execution_stategy_swift(cfg, sw, resources, run):
     # - RP OVERHEAD TIME: the time taken by RP to bootstrap and manage each CU
     #   for each pilot. This value needs to be assessed inferred by a
     #   performance model of RP.
-    rp_overhead_time = 600 + sw['n_cus'] * 4
+    #rp_overhead_time = 600 + sw['n_cus'] * 4
+    rp_overhead_time = 900 + sw['n_cus'] * 4
 
     # NUMBER OF CORES: Maximal concurrency is achieved by having 1 core for each
     # core needed by each task of the given workflow. A minimal concurrency will
@@ -1146,7 +1147,8 @@ def write_email_body(cfg, run):
     substitutes['SP_VERSION'] = rp.version
     substitutes['RU_VERSION'] = ru.version
 
-    write_template(cfg['log']['email']['template'], substitutes, run['files']['email'])
+    write_template(cfg['log']['email']['template'], substitutes,
+                   run['files']['email'])
 
     os.system('ls -al %s >> %s' % (run['root'], run['files']['email']))
 
@@ -1225,7 +1227,9 @@ def email_report(cfg, run):
 
     body = write_email_body(cfg, run)
 
-    send_email(cfg, cfg['log']['email']['recipients'][0], cfg['log']['email']['recipients'], subject, body, attachments)
+    send_email(cfg, cfg['log']['email']['recipients'][0],
+               cfg['log']['email']['recipients'],
+               subject, body, attachments)
 
 
 # -----------------------------------------------------------------------------
@@ -1242,7 +1246,7 @@ def uri_to_tag(resource):
            'stampede.xsede.org'        : 'xsede.stampede',
            'trestles.sdsc.xsede.org'   : 'xsede.trestles',
            'hopper.nersc.gov'          : 'nersc.hopper_ccm',
-           'supermic.cct-lsu.xsede.org': 'lsu.supermic',
+           'supermic.cct-lsu.xsede.org': 'xsede.supermic',
            'comet.sdsc.xsede.org'      : 'xsede.comet'}.get(resource)
 
     if not tag :
@@ -1467,7 +1471,7 @@ def execute_run(cfg, run):
 
         run['pilot_manager_id'] = pmgr.uid
 
-        pmgr.register_callback(pilot_state_cb, callback_data=run)
+        pmgr.register_callback(pilot_state_cb, cb_data=run)
 
         # PILOT DESCRIPTIONS
         # ------------------------------------------------------------------
@@ -1499,9 +1503,9 @@ def execute_run(cfg, run):
         umgr.add_pilots(run['pilots'])
 
         umgr.register_callback(wait_queue_size_cb, rp.WAIT_QUEUE_SIZE,
-                               callback_data=run)
+                               cb_data=run)
         umgr.register_callback(unit_state_change_cb,
-                               callback_data=run)
+                               cb_data=run)
 
         log_rp(run)
 
@@ -1618,7 +1622,7 @@ def execute_swift_workload(cfg, run, swift_workload, swift_cb=None):
 
         run['pilot_manager_id'] = pmgr.uid
 
-        pmgr.register_callback(pilot_state_cb, callback_data=run)
+        pmgr.register_callback(pilot_state_cb, cb_data=run)
 
         # PILOT DESCRIPTIONS
         # ------------------------------------------------------------------
@@ -1650,9 +1654,9 @@ def execute_swift_workload(cfg, run, swift_workload, swift_cb=None):
         umgr.add_pilots(run['pilots'])
 
         umgr.register_callback(wait_queue_size_cb, rp.WAIT_QUEUE_SIZE,
-                               callback_data=run)
+                               cb_data=run)
         umgr.register_callback(unit_state_change_cb,
-                               callback_data=run)
+                               cb_data=run)
 
         if swift_cb:
             umgr.register_callback(swift_cb)
