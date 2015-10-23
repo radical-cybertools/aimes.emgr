@@ -1334,7 +1334,7 @@ def execute_run(cfg, run):
 
         run['pilot_manager_id'] = pmgr.uid
 
-        pmgr.register_callback(pilot_state_cb, callback_data=run)
+        pmgr.register_callback(pilot_state_cb, cb_data=run)
 
         # PILOT DESCRIPTIONS
         # ------------------------------------------------------------------
@@ -1366,9 +1366,9 @@ def execute_run(cfg, run):
         umgr.add_pilots(run['pilots'])
 
         umgr.register_callback(wait_queue_size_cb, rp.WAIT_QUEUE_SIZE,
-                               callback_data=run)
+                               cb_data=run)
         umgr.register_callback(unit_state_change_cb,
-                               callback_data=run)
+                               cb_data=run)
 
         log_rp(run)
 
@@ -1470,7 +1470,7 @@ def execute_swift_workload(cfg, run, swift_workload, swift_cb=None):
 
         run['pilot_manager_id'] = pmgr.uid
 
-        pmgr.register_callback(pilot_state_cb, callback_data=run)
+        pmgr.register_callback(pilot_state_cb, cb_data=run)
 
         # PILOT DESCRIPTIONS
         # ------------------------------------------------------------------
@@ -1502,9 +1502,9 @@ def execute_swift_workload(cfg, run, swift_workload, swift_cb=None):
         umgr.add_pilots(run['pilots'])
 
         umgr.register_callback(wait_queue_size_cb, rp.WAIT_QUEUE_SIZE,
-                               callback_data=run)
+                               cb_data=run)
         umgr.register_callback(unit_state_change_cb,
-                               callback_data=run)
+                               cb_data=run)
 
         if swift_cb:
             umgr.register_callback(swift_cb)
