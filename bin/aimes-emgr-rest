@@ -233,6 +233,7 @@ def _run_workload(ssid):
             # run the workload, and also pass the state callback so that we get
             # state notifications
             aimes.emgr.execute_swift_workload(cfg, run, sw, _state_cb)
+
         wl_thread = threading.Thread(target=_wl_executor, args=[cfg, run, sw])
         wl_thread.start()
         sessions[ssid]['threads'].append(wl_thread)
