@@ -44,11 +44,15 @@
             "unsupported": {
                 "supermic.cct-lsu.xsede.org": {
                     "sched": "pbs",
-                    "fconf": "conf/lsu.supermic.json"
+                    "fconf": "conf/xsede.supermic.json"
                 },
                 "comet.sdsc.xsede.org": {
                     "sched": "slurm",
                     "fconf": "conf/xsede.comet.json"
+                },
+                "gordon.sdsc.xsede.org": {
+                    "sched": "pbs",
+                    "fconf": "conf/xsede.gordon.json"
                 }
             }
         }
