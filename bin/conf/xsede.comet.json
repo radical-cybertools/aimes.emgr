@@ -1,0 +1,29 @@
+{
+    "cluster_bandwidth": {
+        "comet_sdsc_xsede_org": {
+            "54_196_51_239": {
+                "out": 26.0
+            }
+        }
+    },
+    "cluster_config": {
+        "": {
+            "num_nodes": 1984,
+            "queue_info": {
+                "compute": {
+                    "max_walltime"      : 172800,
+                    "num_procs_limit"   : 864,
+                    "queue_name"        : "compute",
+                    "queued_jobs_limit" : 4
+                },
+                "shared": {
+                    "max_walltime"      : 172800,
+                    "num_procs_limit"   : 12,
+                    "queue_name"        : "shared"
+                }
+            }
+        }
+    },
+    "cluster_list": ["comet.sdsc.xsede.org"]
+}
+

@@ -75,7 +75,7 @@ def create_run_environment(cfg, run_cfg, tracker, q_qsize):
 
     # Define the constants needed by executing the experimet run.
     run['files'] = {'log'     : run['root'] + 'log.txt',
-                    'runtime' : cfg['experiment_log'],
+                    'runtime' : cfg['log']['file'],
                     'skeleton': run['root'] + 'skeleton.conf',
                     'bundle'  : run['root'] + 'bundle.conf',
                     'email'   : run['root'] + 'email.body',
@@ -161,24 +161,29 @@ def write_bundle_conf(cfg, binding, fout):
     # config=etc/resource_config.json
     entry_template_unsupported = "cluster_type=%s hostname=%s config=%s\n"
 
-    if cfg['bundle_resources']:
-        for resource, scheduler in cfg['bundle_resources'].iteritems():
+    if 'supported' in cfg['bundle']['resources']:
+        rs = cfg['bundle']['resources']['supported']
 
-            if binding == 'early' and cfg['bundle_resources'] in resource:
+        for resource, scheduler in rs.iteritems():
+
+            # if binding == 'early' and cfg['bundle_resources'] in resource:
+            if binding == 'early':
                 substitutes['RESOURCE_LIST'] = entry_template % \
-                    (scheduler, resource, cfg['bundle_username'])
+                    (scheduler, resource, cfg['bundle']['username'])
                 break
 
             substitutes['RESOURCE_LIST'] += entry_template % \
-                (scheduler, resource, cfg['bundle_username'])
+                (scheduler, resource, cfg['bundle']['username'])
 
-    if cfg['bundle_unsupported']:
-        for resource, properties in cfg['bundle_unsupported'].iteritems():
+    if 'unsupported' in cfg['bundle']['resources']:
+        rs = cfg['bundle']['resources']['unsupported']
+
+        for resource, properties in rs.iteritems():
 
             substitutes['RESOURCE_LIST'] += entry_template_unsupported % \
                 (properties['sched'], resource, properties['fconf'])
 
-    write_template(cfg['bundle_template'], substitutes, fout)
+    write_template(cfg['bundle']['template'], substitutes, fout)
 
 
 # -----------------------------------------------------------------------------
@@ -340,6 +345,63 @@ def derive_workflow(cfg, skeleton, run):
 
 
 # -----------------------------------------------------------------------------
+def derive_swift_workload(cfg, sw, run):
+    '''We need:
+        - input/output files size for each cud in sw
+        - duration for each cud. If not known, we need an estimated average
+          possibly set in the confif.json file.
+    '''
+
+    workload = {}
+
+    workload['n_cus'] = len(sw['cuds'])
+
+    # Times
+    workload['t_cus']   = []
+    workload['t_fins']  = []
+    workload['t_fouts'] = []
+
+    # Cores
+    workload['c_cus']   = []
+
+    for cu in sw['cuds']:
+        # List of input data size.
+        if 'inputs' in cu.keys():
+            for i in cu['inputs']:
+                workload['t_fins'].append(float(i['size']))
+        else:
+            workload['t_fins'].append(0.0)
+
+        # List of output data size.
+        if 'outputs' in cu.keys():
+            for o in cu['outputs']:
+                workload['t_fouts'].append(float(o['size']))
+        else:
+            workload['t_fouts'].append(0.0)
+
+        # List of CU durations.
+        if 'duration' in cu.keys():
+            workload['t_cus'].append(float(cu['duration']))
+        else:
+            # FIXME: assumes cu['arguments'][0] to be the number of seconds
+            # passed to /bin/sleep
+            workload['t_cus'].append(float(cu['arguments'][0]))
+
+        workload['c_cus'].append(cu['cores'])
+
+    workload['tt_cus']   = sum(workload['t_cus'])
+    workload['tt_fins']  = sum(workload['t_fins'])
+    workload['tt_fouts'] = sum(workload['t_fouts'])
+
+    workload['t_cus_max'] = workload['t_cus'][-1]
+    workload['t_cus_min'] = workload['t_cus'][0]
+
+    workload['tc_cus'] = sum(workload['c_cus'])
+
+    return workload
+
+
+# -----------------------------------------------------------------------------
 def derive_resources(cfg, bundle):
     '''Collect information about the resources to plan the execution strategy.
     '''
@@ -354,10 +416,10 @@ def derive_resources(cfg, bundle):
         resource = bundle.resources[resource_name]
 
         resources['bandwidth_in'][resource.name] = resource.get_bandwidth(
-            cfg['bundle_origin'], 'in')
+            cfg['bundle']['origin'], 'in')
 
         resources['bandwidth_out'][resource.name] = resource.get_bandwidth(
-            cfg['bundle_origin'], 'out')
+            cfg['bundle']['origin'], 'out')
 
     # Get the total core capacity offered by the default queues of the target
     # resources.
@@ -395,29 +457,29 @@ def derive_execution_stategy_skeleton(cfg, workflow, resources, run):
 
     # Degree of concurrency. Question: what amount of concurrent execution
     # minimizes TTC?
-    strategy['heuristic']['percentage_concurrency'] = 100
+    strategy['heuristic']['percentage_concurrency'] = cfg['pct_concurrency']
 
     # Number of resources. Question: what is the number of resources that when
     # used to execute the tasks of the workflow minimize the TTC?
-    strategy['heuristic']['percentage_resources'] = 100
+    strategy['heuristic']['percentage_resources'] = cfg['pct_resources']
 
     # CHOOSE RESOURCES: Get the resources from the bundle.
     strategy['inference']['target_resources'] = list()
 
-    if cfg['bundle_resources']:
-        for resource in cfg['bundle_resources'].keys():
+    if 'supported' in cfg['bundle']['resources']:
+        for resource in cfg['bundle']['resources']['supported'].keys():
 
-            if run['binding'] == 'early' and cfg['bundle_resources'] in resource:
+            if run['binding'] == 'early':
                 strategy['inference']['target_resources'].append(
                     uri_to_tag(resource))
                 break
 
             strategy['inference']['target_resources'].append(uri_to_tag(resource))
 
-    if cfg['bundle_unsupported']:
-        for resource in cfg['bundle_unsupported'].keys():
+    if 'unsupported' in cfg['bundle']['resources']:
+        for resource in cfg['bundle']['resources']['unsupported'].keys():
 
-            if run['binding'] == 'early' and cfg['bundle_unsupported'] in resource:
+            if run['binding'] == 'early':
                 strategy['inference']['target_resources'].append(
                     uri_to_tag(resource))
                 break
@@ -476,11 +538,11 @@ def derive_execution_stategy_skeleton(cfg, workflow, resources, run):
     strategy['inference']['rp_overhead_time_workflow'] = (
         600 + workflow['skeleton_tasks'] * 4)
 
-    # PILOT DESCRIPTIONS: Maximal concurrency is achieved by having 1 core for
-    # each core needed by each task of the given workflow. A minimal
-    # concurrency will need to be calculated so to guarantee the availability
-    # of the minimal amount of cores needed by the largest task (i.e. the tasks
-    # that need the largest number of cores in order to be executed).
+    # NUMBER OF CORES: Maximal concurrency is achieved by having 1 core for each
+    # core needed by each task of the given workflow. A minimal concurrency will
+    # need to be calculated so to guarantee the availability of the minimal
+    # amount of cores needed by the largest task (i.e. the tasks that need the
+    # largest number of cores in order to be executed).
     strategy['inference']['cores_workflow'] = math.ceil(
         (workflow['stages_compute']['max'] *
          strategy['heuristic']['percentage_concurrency']) / 100.0)
@@ -489,8 +551,11 @@ def derive_execution_stategy_skeleton(cfg, workflow, resources, run):
 
 
 # -----------------------------------------------------------------------------
-def derive_execution_stategy_swift(cfg, swift_workload, resources, run):
+def derive_execution_stategy_swift(cfg, sw, resources, run):
     '''
+    cfg = configuration file
+    sw  = swift workload
+
     the returned strategy needs to contain:
 
         strategy['inference']['target_resources']
@@ -501,27 +566,90 @@ def derive_execution_stategy_swift(cfg, swift_workload, resources, run):
         strategy['inference']['rp_overhead_time_workflow']
     '''
 
-    ES_PILOT_NUM       =  1
-    ES_PILOT_RESOURCE  = 'xsede.comet'
-    ES_COMPUTE_CORES   =   128
-    ES_COMPUTE_TIME    = 54321
-    ES_STAGING_TIME    = 12345
-    ES_OVERHEAD_TIME   = 01010
-    ES_PCT_CONCURRENCY = 100
-    ES_PCT_RESOURCES   = 100
-    ES_RP_SCHEDULER    = 'SCHED_DIRECT_SUBMISSION'
+    # CHOOSE RESOURCES: Get the resources from the bundle.
+    target_resources = list()
 
-    # TODO: infer those numbers from the given workload / set of resources
-    # / external information.  To do so, submit an AIMES-3 proposal to NSF.
-    info = {'target_resources'          : [ES_PILOT_RESOURCE],
-            'cores_workflow'            : ES_COMPUTE_CORES,
-            'number_pilots'             : ES_PILOT_NUM,
-            'compute_time_workflow'     : ES_COMPUTE_TIME,
-            'staging_time_workflow'     : ES_STAGING_TIME,
-            'rp_overhead_time_workflow' : ES_OVERHEAD_TIME,
-            'percentage_concurrency'    : ES_PCT_CONCURRENCY,
-            'percentage_resources'      : ES_PCT_RESOURCES,
-            'rp_scheduler'              : ES_RP_SCHEDULER
+    if 'supported' in cfg['bundle']['resources']:
+        for resource in cfg['bundle']['resources']['supported'].keys():
+
+            if run['binding'] == 'early':
+                target_resources.append(uri_to_tag(resource))
+                break
+
+            target_resources.append(uri_to_tag(resource))
+
+    if 'unsupported' in cfg['bundle']['resources']:
+        for resource in cfg['bundle']['resources']['unsupported'].keys():
+
+            if run['binding'] == 'early':
+                target_resources.append(uri_to_tag(resource))
+                break
+
+            target_resources.append(uri_to_tag(resource))
+
+    # CHOOSE NUMBER OF PILOTS: Adopt an heuristics that tells us how many
+    # concurrent resources we should choose given the execution time boundaries.
+    # We assume that task concurrency should always be maximized we may decide
+    # that we want to start with #pilots = #resources to which we have access.
+    if cfg['strategy']['pct_resources'] == 100:
+        number_pilots = len(target_resources)
+
+    # CHOOSE THE SCHEDULER FOR THE CUs: Depending on whether we have multiple
+    # pilot and on what metric needs to bo min/maximized. In this demo we
+    # minimize TTC so we choose backfilling. Do we have a default scheduler? If
+    # so, an else is superfluous.
+    if len(target_resources) > 1:
+        rp_scheduler = 'SCHED_BACKFILLING'
+    else:
+        rp_scheduler = 'SCHED_DIRECT_SUBMISSION'
+
+    # TIME COMPONENTS OF EACH PILOT WALLTIME:
+    #
+    # - COMPUTE TIME: the time taken by the tasks to execute on a pilot of the
+    #   resource overlay, given the decided degree of concurrency.
+    # . Requirements: run all the tasks on a single pilot. Worse case scenario:
+    #   a single pilot is available for enough time that all the tasks can
+    #   execute at 1/n_pilots of the optimal concurrency that would be achieved
+    #   by having all the n_pilots available.
+    # . Implicit assumption: pilots are heterogeneous - all have the same
+    #   walltime and number of cores.
+    # . Formula: after sorting the length of all the tasks, the walltime
+    #   accounting for the described worse case scenario is the sum of the n
+    #   longest tasks with n = the number of pilots instantiated.
+    sw['t_cus_sorted'] = sorted(sw['t_cus'])
+    compute_time = sum(sw['t_cus_sorted'][-len(target_resources):])
+
+    # - STAGING TIME: the time needed to move the I/O files of each task (that
+    #   will be) bound to each pilot. We assume a conservative 5 seconds to
+    #   transfer 1 MB but this value will have to be taken dynamically from a
+    #   monitoring system testing the transfer speed between two given points -
+    #   origin and destination.
+    staging_time = (((sw['tt_fins'] + sw['tt_fouts']) / 1024) / 1024) * 5
+
+    # - RP OVERHEAD TIME: the time taken by RP to bootstrap and manage each CU
+    #   for each pilot. This value needs to be assessed inferred by a
+    #   performance model of RP.
+    #rp_overhead_time = 600 + sw['n_cus'] * 4
+    rp_overhead_time = 900 + sw['n_cus'] * 4
+
+    # NUMBER OF CORES: Maximal concurrency is achieved by having 1 core for each
+    # core needed by each task of the given workflow. A minimal concurrency will
+    # need to be calculated so to guarantee the availability of the minimal
+    # amount of cores needed by the largest task (i.e. the tasks that need the
+    # largest number of cores in order to be executed).
+    compute_cores = math.ceil((sw['tc_cus'] * cfg['strategy']['pct_concurrency']) / 100.0)
+
+
+    # TODO: Clean this up.
+    info = {'target_resources'          : target_resources,
+            'cores_workflow'            : compute_cores,
+            'number_pilots'             : number_pilots,
+            'compute_time_workflow'     : compute_time,
+            'staging_time_workflow'     : staging_time,
+            'rp_overhead_time_workflow' : rp_overhead_time,
+            'percentage_concurrency'    : cfg['strategy']['pct_concurrency'],
+            'percentage_resources'      : cfg['strategy']['pct_resources'],
+            'rp_scheduler'              : rp_scheduler
             }
 
     strategy = {'heuristic' : info,
@@ -835,20 +963,20 @@ def log_execution_stategy(cfg, run, strategy):
 
     print >> f, "Configurations:"
 
-    if cfg['bundle_resources']:
-        print "I am here: %s" % cfg['bundle_resources']
+    if 'supported' in cfg['bundle']['resources']:
+        print "I am here: %s" % cfg['bundle']['resources']['supported']
         print >> f, "\tTarget resource for early binding : %s" %\
-            cfg['bundle_resources']
+            cfg['bundle']['resources']['supported']
 
         print >> f, "\tTarget resources for late binding : %s" %\
-            ', '.join(map(str, cfg['bundle_resources'].keys()))
+            ', '.join(map(str, cfg['bundle']['resources']['supported'].keys()))
 
-    if cfg['bundle_unsupported']:
+    if 'supported' in cfg['bundle']['resources']:
         print >> f, "\tTarget resource for early binding : %s" %\
-            cfg['bundle_unsupported']
+            cfg['bundle']['resources']['unsupported']
 
         print >> f, "\tTarget resources for late binding : %s" %\
-            ', '.join(map(str, cfg['bundle_unsupported'].keys()))
+            ', '.join(map(str, cfg['bundle']['resources']['unsupported'].keys()))
 
     print >> f, "\tType of task-to-resource binding  : %s" %\
         run['binding']
@@ -1019,7 +1147,8 @@ def write_email_body(cfg, run):
     substitutes['SP_VERSION'] = rp.version
     substitutes['RU_VERSION'] = ru.version
 
-    write_template(cfg['email_template'], substitutes, run['files']['email'])
+    write_template(cfg['log']['email']['template'], substitutes,
+                   run['files']['email'])
 
     os.system('ls -al %s >> %s' % (run['root'], run['files']['email']))
 
@@ -1037,7 +1166,7 @@ def create_diagram(cfg, run):
 
     enter   = 'cd %s ; ' % run['root']
     diagram = 'radicalpilot-stats -m plot,stat -s %s ' % run['session_id']
-    mongodb = '-d %s ' % cfg['rp_dburl']
+    mongodb = '-d %s ' % cfg['mongodb']
     fstats  = '> %s 2>/dev/null ; ' % run['files']['stats'].split('/')[-1]
     exit    = 'cd ..'
 
@@ -1058,7 +1187,7 @@ def dump_db(cfg, run):
     dumps = []
 
     os.system('cd %s ; radicalpilot-close-session -m export -d %s -s %s ; cd ..' %
-              (run['root'], cfg['rp_dburl'], run['session_id']))
+              (run['root'], cfg['mongodb'], run['session_id']))
 
     dumps.append(run['root']+run['session_id']+'.p.json')
     dumps.append(run['root']+run['session_id']+'.pm.json')
@@ -1098,7 +1227,9 @@ def email_report(cfg, run):
 
     body = write_email_body(cfg, run)
 
-    send_email(cfg, cfg['recipients'][0], cfg['recipients'], subject, body, attachments)
+    send_email(cfg, cfg['log']['email']['recipients'][0],
+               cfg['log']['email']['recipients'],
+               subject, body, attachments)
 
 
 # -----------------------------------------------------------------------------
@@ -1115,7 +1246,8 @@ def uri_to_tag(resource):
            'stampede.xsede.org'        : 'xsede.stampede',
            'trestles.sdsc.xsede.org'   : 'xsede.trestles',
            'hopper.nersc.gov'          : 'nersc.hopper_ccm',
-           'supermic.cct-lsu.xsede.org': 'lsu.supermic'}.get(resource)
+           'supermic.cct-lsu.xsede.org': 'xsede.supermic',
+           'comet.sdsc.xsede.org'      : 'xsede.comet'}.get(resource)
 
     if not tag :
         sys.exit("Unknown resource specified in bundle: %s" % resource)
@@ -1291,7 +1423,7 @@ def execute_run(cfg, run):
         # SESSION
         # -----------------------------------------------------------------
         # Create session in Radical Pilot for this run.
-        session           = rp.Session(database_url=cfg['rp_dburl'])
+        session           = rp.Session(database_url=cfg['mongodb'])
         run['session_id'] = session.uid
 
         record_run_session(run)
@@ -1311,15 +1443,20 @@ def execute_run(cfg, run):
 
         # RESOURCES
         # ------------------------------------------------------------------
-        # Acquire and process bundles.
-        bundle = aimes.bundle.Bundle(query_mode=aimes.bundle.DB_QUERY,
-                                     mongodb_url=cfg['bundle_dburl'],
-                                     origin=cfg['bundle_origin'])
+        # Acquire and process bundles. Connect to bundle DB only if config file
+        # sets supported resources.
+        if 'supported' in cfg['bundle']['resources']:
+            bundle = aimes.bundle.Bundle(query_mode=aimes.bundle.DB_QUERY,
+                                         mongodb_url=cfg['bundle']['mongodb'],
+                                         origin=cfg['bundle']['origin'])
 
-        # Mine bundles for resource properties and states.
-        resources = derive_resources(cfg, bundle)
+            # Mine bundles for resource properties and states.
+            resources = derive_resources(cfg, bundle)
 
-        log_bundle(run, resources)
+            log_bundle(run, resources)
+        else:
+            # No need to derive info for unsupported resources.
+            resources = {}
 
         # STRATEGY
         # ------------------------------------------------------------------
@@ -1334,7 +1471,7 @@ def execute_run(cfg, run):
 
         run['pilot_manager_id'] = pmgr.uid
 
-        pmgr.register_callback(pilot_state_cb, callback_data=run)
+        pmgr.register_callback(pilot_state_cb, cb_data=run)
 
         # PILOT DESCRIPTIONS
         # ------------------------------------------------------------------
@@ -1366,9 +1503,9 @@ def execute_run(cfg, run):
         umgr.add_pilots(run['pilots'])
 
         umgr.register_callback(wait_queue_size_cb, rp.WAIT_QUEUE_SIZE,
-                               callback_data=run)
+                               cb_data=run)
         umgr.register_callback(unit_state_change_cb,
-                               callback_data=run)
+                               cb_data=run)
 
         log_rp(run)
 
@@ -1440,27 +1577,42 @@ def execute_swift_workload(cfg, run, swift_workload, swift_cb=None):
         # SESSION
         # -----------------------------------------------------------------
         # Create session in Radical Pilot for this run.
-        session           = rp.Session(database_url=cfg['rp_dburl'])
+        session           = rp.Session(database_url=cfg['mongodb'])
         run['session_id'] = session.uid
 
         record_run_session(run)
 
         # RESOURCES
         # ------------------------------------------------------------------
-        # Acquire and process bundles.
-        bundle = aimes.bundle.Bundle(query_mode=aimes.bundle.DB_QUERY,
-                                     mongodb_url=cfg['bundle_dburl'],
-                                     origin=cfg['bundle_origin'])
+        # Acquire and process bundles. Connect to bundle DB only if config file
+        # sets supported resources.
+        bundle = None
 
-        # Mine bundles for resource properties and states.
-        resources = derive_resources(cfg, bundle)
+        if 'supported' in cfg['bundle']['resources']:
+            bundle = aimes.bundle.Bundle(query_mode=aimes.bundle.DB_QUERY,
+                                         mongodb_url=cfg['bundle']['mongodb'],
+                                         origin=cfg['bundle']['origin'])
 
-        log_bundle(run, resources)
+            # Mine bundles for resource properties and states.
+            resources = derive_resources(cfg, bundle)
+
+            log_bundle(run, resources)
+
+        else:
+            # No need to derive info for unsupported resources.
+            resources = {}
+
+        # WORKLOAD
+        # ------------------------------------------------------------------
+        # Derive workload for the execution strategy.
+        sw = derive_swift_workload(cfg, swift_workload, run)
+
+        pprint.pprint(sw)
 
         # STRATEGY
         # ------------------------------------------------------------------
         # Define execution strategy.
-        strategy = derive_execution_stategy_swift(cfg, swift_workload, resources, run)
+        strategy = derive_execution_stategy_swift(cfg, sw, resources, run)
 
         log_execution_stategy(cfg, run, strategy)
 
@@ -1470,7 +1622,7 @@ def execute_swift_workload(cfg, run, swift_workload, swift_cb=None):
 
         run['pilot_manager_id'] = pmgr.uid
 
-        pmgr.register_callback(pilot_state_cb, callback_data=run)
+        pmgr.register_callback(pilot_state_cb, cb_data=run)
 
         # PILOT DESCRIPTIONS
         # ------------------------------------------------------------------
@@ -1502,9 +1654,9 @@ def execute_swift_workload(cfg, run, swift_workload, swift_cb=None):
         umgr.add_pilots(run['pilots'])
 
         umgr.register_callback(wait_queue_size_cb, rp.WAIT_QUEUE_SIZE,
-                               callback_data=run)
+                               cb_data=run)
         umgr.register_callback(unit_state_change_cb,
-                               callback_data=run)
+                               cb_data=run)
 
         if swift_cb:
             umgr.register_callback(swift_cb)
@@ -1544,7 +1696,8 @@ def execute_swift_workload(cfg, run, swift_workload, swift_cb=None):
         if session:
             session.close(cleanup=False, terminate=True)
 
-        email_report(cfg, run)
+        if 'email' in cfg['log']['media']:
+            email_report(cfg, run)
 
 
 # -----------------------------------------------------------------------------

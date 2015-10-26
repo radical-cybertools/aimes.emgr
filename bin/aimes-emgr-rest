@@ -183,41 +183,38 @@ def _run_workload(ssid):
         # manage execution.
         import aimes.emgr
 
-        cfg = {}
+        cfg = config
 
         # FIXME: The mapping between two conf structures is redundant. Keep only
         # config.
-        cfg['rp_dburl']       = config['mongodb']
-        cfg['experiment_log'] = config['logfile']
-        cfg['workload_type']  = config['workload_type']
+        # cfg['rp_dburl']       = config['mongodb']
+        # cfg['experiment_log'] = config['log']['file']
+        # cfg['workload_type']  = config['workload_type']
 
         cfg['scales']         = [len(sw['cuds'])]
-        cfg['bindings']       = config['bindings']
-        cfg['cores']          = config['cores']
-        cfg['time_distrib']   = config['time_distribs']
-        cfg['iterations']     = config['iterations']
+        # cfg['bindings']       = config['bindings']
+        # cfg['cores']          = config['cores']
+        # cfg['time_distrib']   = config['time_distribs']
+        # cfg['iterations']     = config['iterations']
         cfg['rerun_attempts'] = 1
 
-        cfg['bundle_username']    = config['bundle']['username']
-        cfg['bundle_dburl']       = config['bundle']['mongodb']
-        cfg['bundle_template']    = config['bundle']['template']
-        cfg['bundle_origin']      = config['bundle']['origin']
-        cfg['bundle_resources']   = config['bundle']['resources']['supported']
-        cfg['bundle_unsupported'] = config['bundle']['resources']['unsupported']
+        # cfg['bundle_username']    = config['bundle']['username']
+        # cfg['bundle_dburl']       = config['bundle']['mongodb']
+        # cfg['bundle_template']    = config['bundle']['template']
+        # cfg['bundle_origin']      = config['bundle']['origin']
+        # cfg['bundle_resources'] = config['bundle']['resources']['supported']
+        # cfg['bundle_unsupported'] = config['bundle']['resources']['unsupported']
 
-        cfg['rp_dburl']       = config['mongodb']
-        cfg['experiment_log'] = config['logfile']
-        cfg['workload_type']  = config['workload_type']
-        cfg['email_template'] = config['logging']['email']['template']
-        cfg['recipients']     = config['logging']['email']['recipients']
-        cfg['project_ids']    = config['project_ids']
+        # cfg['email_template'] = config['log']['email']['template']
+        # cfg['recipients']     = config['log']['email']['recipients']
+        # cfg['project_ids']    = config['project_ids']
 
         # we assume a single run. This makes scales, bindings, time_distribs,
         # iterations, and cores unecessary lists. We are going to assume that
         # each list as a single value otherwise we trow an error.
 
         if (len(cfg['scales']) > 1 or len(cfg['bindings']) > 1 or
-                len(cfg['time_distrib']) > 1 or len(cfg['iterations']) > 1 or
+                len(cfg['time_distribs']) > 1 or len(cfg['iterations']) > 1 or
                 len(cfg['cores']) > 1):
             print "Multiple scales, bindings, time distributions, iterations, \
                    and number of cores not supported in this execution mode"
@@ -225,7 +222,7 @@ def _run_workload(ssid):
         else:
             run = aimes.emgr.create_run_environment(cfg,
                         [cfg['scales'][0], cfg['bindings'][0],
-                         cfg['time_distrib'][0], cfg['iterations'][0],
+                         cfg['time_distribs'][0], cfg['iterations'][0],
                          cfg['rerun_attempts'], cfg['cores'][0]],
                         1, 1)
 
@@ -236,6 +233,7 @@ def _run_workload(ssid):
             # run the workload, and also pass the state callback so that we get
             # state notifications
             aimes.emgr.execute_swift_workload(cfg, run, sw, _state_cb)
+
         wl_thread = threading.Thread(target=_wl_executor, args=[cfg, run, sw])
         wl_thread.start()
         sessions[ssid]['threads'].append(wl_thread)
