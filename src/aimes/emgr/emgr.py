@@ -804,14 +804,20 @@ def derive_cu_descriptions_swift(cfg, run, swift_workload):
     '''Derives CU from the given workload
     '''
 
+    # Work around RP attribute interface.
+    attributes = ['executable', 'cores', 'mpi', 'name', 'arguments',
+        'environment', 'stdout', 'stderr', 'input_staging', 'output_staging',
+        'pre_exec', 'post_exec', 'kernel', 'restartable', 'cleanup']
+
     cuds = {'all': list()}
 
     for cud in swift_workload['cuds']:
 
         if isinstance(cud, dict):
             rp_cud = rp.ComputeUnitDescription()
-            for k,v in cud.items():
-                rp_cud.set_attribute(k, v)
+            for k, v in cud.items():
+                if k in attributes:
+                    rp_cud.set_attribute(k, v)
 
             cuds['all'].append(rp_cud)
         else:
