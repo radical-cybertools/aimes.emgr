@@ -235,12 +235,12 @@ def _run_workload(emgr_sid):
             # run the workload, and also pass the state callback so that we get
             # state notifications
             rp_sid = aimes.emgr.execute_swift_workload(cfg, run, sw, _state_cb)
-            with open("%s/%s/session_ids.txt" % (data, emgr_sid), "a") as f:
-                f.write("%s\n" % rp_sid)
+
             mkdir("%s/%s/%s/" % (data, emgr_sid, rp_sid))
             ru.write_json(run,  "%s/%s/%s/run.json"  % (data, emgr_sid, rp_sid))
             ru.write_json(cfg,  "%s/%s/%s/cfg.json"  % (data, emgr_sid, rp_sid))
-            ru.write_json(work, "%s/%s/%s/work.json" % (data, emgr_sid, rp_sid))
+            with open("%s/%s/session_ids.txt" % (data, emgr_sid), "a+") as f:
+                f.write("%s\n" % rp_sid)
 
         wl_thread = threading.Thread(target=_wl_executor, args=[cfg, run, sw])
         wl_thread.start()
