@@ -31,32 +31,32 @@ def list_sessions():
 def create_session():
     r = requests.put("%s/swift/sessions/" % ep)
     print r.json()
-    ssid = r.json()['ssid']
-    print ssid
-    return ssid
+    emgr_sid = r.json()['emgr_sid']
+    print emgr_sid
+    return emgr_sid
 
 
-def add_task(ssid):
+def add_task(emgr_sid):
     global cnt
     cnt += 1
     cud = {"executable" : "/bin/sleep",
            "arguments"  : ["%d" % cnt],
            "cores"      : 1}
     data = {'td': json.dumps(cud)}
-    r = requests.put("%s/swift/sessions/%s" % (ep, ssid), data)
+    r = requests.put("%s/swift/sessions/%s" % (ep, emgr_sid), data)
     print r.json()
-    return r.json()['stid']
+    return r.json()['emgr_tid']
 
 
-def dump_session(ssid):
-    r = requests.get("%s/swift/sessions/%s" % (ep, ssid))
+def dump_session(emgr_sid):
+    r = requests.get("%s/swift/sessions/%s" % (ep, emgr_sid))
     pprint.pprint(r.json())
 
 
-def check_task(ssid, stid):
-    r = requests.get("%s/swift/sessions/%s/%s" % (ep, ssid, stid))
+def check_task(emgr_sid, emgr_tid):
+    r = requests.get("%s/swift/sessions/%s/%s" % (ep, emgr_sid, emgr_tid))
   # pprint.pprint(r.json())
-    print 'task %s: %s' % (stid, r.json()['result']['state'])
+    print 'task %s: %s' % (emgr_tid, r.json()['result']['state'])
 
     if r.json()['result']['state'].lower() in ['done', 'canceled', 'failed']:
         return True
@@ -64,29 +64,29 @@ def check_task(ssid, stid):
         return False
 
 
-def run_session(ssid):
-    r = requests.put("%s/swift/sessions/%s/execute" % (ep, ssid))
+def run_session(emgr_sid):
+    r = requests.put("%s/swift/sessions/%s/execute" % (ep, emgr_sid))
     print r.json()
 
 
-def delete_session(ssid):
-    r = requests.delete("%s/swift/sessions/%s" % (ep, ssid))
+def delete_session(emgr_sid):
+    r = requests.delete("%s/swift/sessions/%s" % (ep, emgr_sid))
     print r.json()
 
 
 # create a session, and begin submitting tasks.  Then let some time expire so
 # that the tasks get executed by the watcher
 print ' ---------- create session'
-ssid = create_session()
+emgr_sid = create_session()
 
 print ' ---------- list sessions'
 list_sessions()
 tids = list()
 
 print ' ---------- submit tasks'
-tids.append(add_task(ssid))
-tids.append(add_task(ssid))
-tids.append(add_task(ssid))
+tids.append(add_task(emgr_sid))
+tids.append(add_task(emgr_sid))
+tids.append(add_task(emgr_sid))
 
 print ' ---------- sleep'
 time.sleep(6)
@@ -94,16 +94,16 @@ time.sleep(6)
 # Now we do the same again, and this batch should get executed in some seconds,
 # too.
 print ' ---------- submit tasks'
-tids.append(add_task(ssid))
-tids.append(add_task(ssid))
-tids.append(add_task(ssid))
+tids.append(add_task(emgr_sid))
+tids.append(add_task(emgr_sid))
+tids.append(add_task(emgr_sid))
 
 while True:
 
     # we wait for all tasks to finish
     all_finished = True
     for tid in tids:
-        if not check_task(ssid, tid):
+        if not check_task(emgr_sid, tid):
             all_finished = False
     if all_finished:
         break
@@ -114,9 +114,9 @@ while True:
 print ' ---------- all tasks are final'
 print ' ---------- list sessions, dump this session'
 list_sessions()
-dump_session(ssid)
+dump_session(emgr_sid)
 
 # print ' ---------- delete this session, list sessions'
-# delete_session(ssid)
+# delete_session(emgr_sid)
 # list_sessions()
 
