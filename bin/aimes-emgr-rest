@@ -57,12 +57,14 @@ import radical.utils as ru
 #
 config   = ru.read_json('%s/config.json' % os.path.dirname(__file__))
 root     = "%s/swift" % config["path"]
+data     = "%s/data"  % config["path"] # where to store session data
 timeout  = 5       # run workload after 10 seconds of idleness
 fake_ttc = 30      # seconds until a faked task execution is declared done
 sessions = dict()  # record running units
 
 # make sure the root exists
 os.system('mkdir -p %s' % root)
+os.system('mkdir -p %s' % data)
 
 # We lock two entities: timestamp and sessions
 ts_lock      = threading.RLock()
@@ -232,7 +234,13 @@ def _run_workload(ssid):
         def _wl_executor(cfg, run, sw):
             # run the workload, and also pass the state callback so that we get
             # state notifications
-            aimes.emgr.execute_swift_workload(cfg, run, sw, _state_cb)
+            sid = aimes.emgr.execute_swift_workload(cfg, run, sw, _state_cb)
+            with open("%s/session_ids.txt" % data, "a") as f:
+                f.write("%s\n" % sid)
+            mkdir("%s/%s/" % (data, sid))
+            ru.write_json(run,  "%s/%s/run.json"  % (data, sid))
+            ru.write_json(cfg,  "%s/%s/cfg.json"  % (data, sid))
+            ru.write_json(work, "%s/%s/work.json" % (data, sid))
 
         wl_thread = threading.Thread(target=_wl_executor, args=[cfg, run, sw])
         wl_thread.start()

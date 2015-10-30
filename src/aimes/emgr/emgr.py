@@ -1573,6 +1573,7 @@ def execute_swift_workload(cfg, run, swift_workload, swift_cb=None):
   # return 'wohoo!'
 
     session = None
+    sid     = None
 
     try:
 
@@ -1699,11 +1700,14 @@ def execute_swift_workload(cfg, run, swift_workload, swift_cb=None):
         # always clean up the session, no matter whether we caught an
         # exception
         record_run_state(run)
+        sid = session.uid
         if session:
             session.close(cleanup=False, terminate=True)
 
         if 'email' in cfg['log']['media']:
             email_report(cfg, run)
+
+    return sid
 
 
 # -----------------------------------------------------------------------------
