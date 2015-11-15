@@ -181,6 +181,8 @@ setup_args = {
     'install_requires'   : ['radical.pilot',
                             'aimes.skeleton',
                             'aimes.bundle',
+                            'bottle',
+                            'requests'
                            ],
     'tests_require'      : [],
     'test_suite'         : 'aimes.emgr.tests',

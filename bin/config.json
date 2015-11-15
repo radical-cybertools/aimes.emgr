@@ -42,22 +42,22 @@
             #//     "gordon.sdsc.xsede.org"     : "pbs"
             #// },
             "unsupported": {
-              # "supermic.cct-lsu.xsede.org": {
-              #     "sched": "pbs",
-              #     "fconf": "conf/xsede.supermic.json"
-              # },
-              # "comet.sdsc.xsede.org": {
-              #     "sched": "slurm",
-              #     "fconf": "conf/xsede.comet.json"
-              # },
-              # "gordon.sdsc.xsede.org": {
-              #     "sched": "pbs",
-              #     "fconf": "conf/xsede.gordon.json"
-              # }
-                "localhost": {
-                    "sched": "fork",
-                    "fconf": "conf/localhost.json"
-                }
+              "supermic.cct-lsu.xsede.org": {
+                  "sched": "pbs",
+                  "fconf": "conf/xsede.supermic.json"
+              },
+              "comet.sdsc.xsede.org": {
+                  "sched": "slurm",
+                  "fconf": "conf/xsede.comet.json"
+              },
+              "gordon.sdsc.xsede.org": {
+                  "sched": "pbs",
+                  "fconf": "conf/xsede.gordon.json"
+              }
+              #   "localhost": {
+              #      "sched": "fork",
+              #      "fconf": "conf/localhost.json"
+              #  }
             }
         }
     },
