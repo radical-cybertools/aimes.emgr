@@ -676,7 +676,7 @@ def derive_pilot_descriptions(cfg, strategy):
 
         pdesc = rp.ComputePilotDescription()
 
-        pdesc.project  = cfg['project_ids'][resource]
+        pdesc.project  = cfg['project_ids'].get(resource)
         pdesc.resource = resource  # label
 
         # Select a specific queue for hopper. This will become another
@@ -1245,7 +1245,8 @@ def uri_to_tag(resource):
     '''Pass.
     '''
 
-    tag = {'blacklight.psc.xsede.org'  : 'xsede.blacklight',
+    tag = {'localhost'                 : 'local.localhost',
+           'blacklight.psc.xsede.org'  : 'xsede.blacklight',
            'gordon.sdsc.xsede.org'     : 'xsede.gordon',
            'stampede.tacc.utexas.edu'  : 'xsede.stampede',
            'stampede.tacc.xsede.org'   : 'xsede.stampede',
@@ -1573,6 +1574,7 @@ def execute_swift_workload(cfg, run, swift_workload, swift_cb=None):
   # return 'wohoo!'
 
     session = None
+    sid     = None
 
     try:
 
@@ -1699,11 +1701,14 @@ def execute_swift_workload(cfg, run, swift_workload, swift_cb=None):
         # always clean up the session, no matter whether we caught an
         # exception
         record_run_state(run)
+        sid = session.uid
         if session:
             session.close(cleanup=False, terminate=True)
 
         if 'email' in cfg['log']['media']:
             email_report(cfg, run)
+
+    return sid
 
 
 # -----------------------------------------------------------------------------
