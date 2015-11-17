@@ -26,7 +26,7 @@ import radical.utils as ru
 #
 # On disk, we basically have this layout:
 #
-#   -- root/
+#   -- data_swift/
 #      |
 #      +-- emgr_sid/
 #          |
@@ -54,17 +54,22 @@ import radical.utils as ru
 # ------------------------------------------------------------------------------
 #
 # read configuration
-#
 config   = ru.read_json('%s/config.json' % os.path.dirname(__file__))
-root     = "%s/swift" % config["path"]
-data     = "%s/data"  % config["path"] # where to store session data
+
+# Execution
 timeout  = 5       # run workload after 10 seconds of idleness
 fake_ttc = 30      # seconds until a faked task execution is declared done
-sessions = dict()  # record running units
 
-# make sure the root exists
-os.system('mkdir -p %s' % root)
-os.system('mkdir -p %s' % data)
+# Logging
+root       = config["path"]
+data_swift = "%s/swift" % config["path"]
+data_aimes = "%s/aimes" % config["path"]
+
+os.system('mkdir -p %s' % data_swift)
+os.system('mkdir -p %s' % data_aimes)
+
+# Environment
+sessions = dict()  # record running units
 
 # We lock two entities: timestamp and sessions
 ts_lock      = threading.RLock()
@@ -80,9 +85,15 @@ def mkdir(path):
         if e.errno != errno.EEXIST:
             raise
 
+
+# ------------------------------------------------------------------------------
+#
 def unlink(path, name):
     os.remove("%s/%s" % (path, name))
 
+
+# ------------------------------------------------------------------------------
+#
 def link(path, src, tgt):
     print "cd %s && ln -s %s %s" % (path, src, tgt)
     os.system("cd %s && ln -s %s %s" % (path, src, tgt))
@@ -97,7 +108,7 @@ def _timestamp(emgr_sid):
 
     with ts_lock:
         now = time.time()
-        os.system('echo "%s" > %s/%s/timestamp' % (now, root, emgr_sid))
+        os.system('echo "%s" > %s/%s/timestamp' % (now, data_swift, emgr_sid))
 
 
 # ------------------------------------------------------------------------------
@@ -105,7 +116,7 @@ def _timestamp(emgr_sid):
 def _get_timestamp(emgr_sid):
 
     with ts_lock:
-        with open("%s/%s/timestamp" % (root, emgr_sid), "r") as f:
+        with open("%s/%s/timestamp" % (data_swift, emgr_sid), "r") as f:
             return float(f.read().strip())
 
 
@@ -165,7 +176,7 @@ def _run_workload(emgr_sid):
             sessions[emgr_sid]['wlcnt'] += 1
             new_wl_name = 'workload_%d' % sessions[emgr_sid]['wlcnt']
 
-            mkdir ('%s/%s/%s' % (root, emgr_sid, new_wl_name))
+            mkdir ('%s/%s/%s' % (data_swift, emgr_sid, new_wl_name))
             unlink(cwd, 'workload')
             link  (cwd, new_wl_name, 'workload')
 
@@ -236,10 +247,10 @@ def _run_workload(emgr_sid):
             # state notifications
             rp_sid = aimes.emgr.execute_swift_workload(cfg, run, sw, _state_cb)
 
-            mkdir("%s/%s/%s/" % (data, emgr_sid, rp_sid))
-            ru.write_json(cfg, "%s/%s/%s/cfg.json"  % (data, emgr_sid, rp_sid))
-            ru.write_json(sw,  "%s/%s/%s/work.json" % (data, emgr_sid, rp_sid))
-            with open("%s/%s/session_ids.txt" % (data, emgr_sid), "a+") as f:
+            mkdir("%s/%s/%s/" % (data_aimes, emgr_sid, rp_sid))
+            ru.write_json(cfg, "%s/%s/%s/cfg.json"  % (data_aimes, emgr_sid, rp_sid))
+            ru.write_json(sw,  "%s/%s/%s/work.json" % (data_aimes, emgr_sid, rp_sid))
+            with open("%s/%s/session_ids.txt" % (data_aimes, emgr_sid), "a+") as f:
                 f.write("%s\n" % rp_sid)
 
         wl_thread = threading.Thread(target=_wl_executor, args=[cfg, run, sw])
@@ -279,7 +290,7 @@ def swift_session_create():
     emgr_sid = ru.generate_id(prefix="emgr_sid.%(days)06d.%(day_counter)04d",
                           mode=ru.ID_CUSTOM)
 
-    if os.path.exists('%s/%s/' % (root, emgr_sid)):
+    if os.path.exists('%s/%s/' % (data_swift, emgr_sid)):
         return {"success" : False,
                 "emgr_sid": emgr_sid,
                 "error"   : "swift session '%s' exists" % emgr_sid}
@@ -290,14 +301,14 @@ def swift_session_create():
         sessions[emgr_sid]['threads'] = list()  # active workload executions
         sessions[emgr_sid]['tcnt']    = 0       # counter for generating task IDs
         sessions[emgr_sid]['wlcnt']   = 0       # counter for generating workload IDs
-        sessions[emgr_sid]['cwd']     = "%s/%s"          % (root, emgr_sid)
-        sessions[emgr_sid]['wld']     = "%s/%s/workload" % (root, emgr_sid)
+        sessions[emgr_sid]['cwd']     = "%s/%s"          % (data_swift, emgr_sid)
+        sessions[emgr_sid]['wld']     = "%s/%s/workload" % (data_swift, emgr_sid)
 
         # create the first workload dir, and link 'workload' to it
         cwd = sessions[emgr_sid]['cwd']
         wld = sessions[emgr_sid]['wld']
         wl_name = 'workload_%d' % sessions[emgr_sid]['wlcnt']
-        mkdir('%s/%s/%s' % (root, emgr_sid, wl_name))
+        mkdir('%s/%s/%s' % (data_swift, emgr_sid, wl_name))
         link (cwd, wl_name, 'workload')
 
     return {"success" : True,
@@ -316,7 +327,7 @@ def swift_task_submit(emgr_sid=None):
                 "emgr_tid": None,
                 "error"   : "missing swift session id"}
 
-    # look for in root/<emgr_sid>/
+    # look for in data_swift/<emgr_sid>/
     if not emgr_sid in sessions:
         return {"success" : False,
                 "emgr_sid": emgr_sid,
@@ -371,7 +382,7 @@ def swift_session_list(emgr_sid=None):
                 "emgr_sid": emgr_sid,
                 "error"   : "missing swift session id"}
 
-    # look for in root/<emgr_sid>/
+    # look for in data_swift/<emgr_sid>/
     if not emgr_sid in sessions:
         return {"success" : False,
                 "emgr_sid": emgr_sid,
@@ -492,7 +503,7 @@ def swift_session_delete(emgr_sid=None):
                 "emgr_sid": emgr_sid,
                 "error"   : "missing swift session id"}
 
-    # look for in root/<emgr_sid>/
+    # look for in data_swift/<emgr_sid>/
     if not emgr_sid in sessions:
         return {"success" : False,
                 "emgr_sid": emgr_sid,
@@ -507,7 +518,7 @@ def swift_session_delete(emgr_sid=None):
 
     with session_lock:
         del(sessions[emgr_sid])
-        os.system('rm -rf %s/%s' % (root, emgr_sid))
+        os.system('rm -rf %s/%s' % (data_swift, emgr_sid))
 
 
     return {"success" : True,
@@ -536,7 +547,7 @@ def _workload_watcher(terminate):
 
           # print "timed workload check for %s" % emgr_sid
 
-            ts_file = "%s/%s/timestamp" % (root, emgr_sid)
+            ts_file = "%s/%s/timestamp" % (data_swift, emgr_sid)
 
             if not os.path.exists(ts_file):
                 # workload does not need any watching
@@ -623,7 +634,7 @@ watcher.join()
 
 # well, we actually don't clean up, so that we can inspect the dir for debug
 # purposes... :P
-# os.system('rm -r %s' % root)
+# os.system('rm -r %s' % data_swift)
 
 
 # ------------------------------------------------------------------------------

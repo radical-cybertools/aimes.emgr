@@ -767,7 +767,8 @@ def execute_swift_workload(cfg, run, swift_workload, swift_cb=None):
 
     except Exception as e:
         # this catches all RP and system exceptions
-        logging.exception('swift workload execution failed')
+        m = "swift workload execution failed: %s" % e
+        logging.exception(m)
         run['state'] = 'FAILED'
         raise
 
@@ -776,7 +777,8 @@ def execute_swift_workload(cfg, run, swift_workload, swift_cb=None):
         # KeyboardInterrupt exception for shutdown.  We also catch
         # SystemExit which gets raised if the main threads exits for
         # some other reason.
-        logging.exception('swift workload execution aborted')
+        m = "swift workload execution aborted: %s" % e
+        logging.exception(m)
         run['state'] = 'FAILED'
         raise
 
@@ -792,4 +794,3 @@ def execute_swift_workload(cfg, run, swift_workload, swift_cb=None):
             email_report(cfg, run)
 
     return sid
-
