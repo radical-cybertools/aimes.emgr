@@ -2,66 +2,75 @@
 
 import os
 import glob
+import pandas as pd
 
 import radical.utils as ru
 import radical.pilot as rp
 
+'''
+This script will postprocess experiments running via the aimes-emgr-resr
+interface.  We expect the following existing data layout:
 
-# This script will postprocess experiments running via the aimes-emgr-resr
-# interface.  We expect the following existing data layout:
-#
-#   -- data/
-#      |
-#      +-- emgr_sid/
-#          |
-#          +-- session_ids.txt
-#          +-- session_id_1/
-#          |   +-- cfg.json
-#          |   +-- work.json
-#          |
-#          +-- session_id_2/
-#          |   +-- cfg.json
-#          |   +-- work.json
-#          ...
-#
-# For any emgr_sid found in session_ids.txt, we check if any post processing has
-# been done before (existence of data/emgr_sid/fetch.ok).  If not, we perform the
-# following actions:
-#
-#   - for each rp_sid in session_ids
-#     - fetch session.json to data/emgr_sid/rp_sid/session.json
-#     - fetch profiles to same location
-#
+  -- aimes/
+     |
+     +-- emgr_sid/
+         |
+         +-- session_ids.txt
+         +-- session_id_1/
+         |   +-- cfg.json
+         |   +-- work.json
+         |
+         +-- session_id_2/
+         |   +-- cfg.json
+         |   +-- work.json
+         ...
+
+For any emgr_sid found in session_ids.txt, we check if any post processing has
+been done before (existence of data/emgr_sid/fetch.ok).  If not, we perform
+the following actions:
+
+  - for each rp_sid in session_ids
+    - fetch session.json to data/emgr_sid/rp_sid/session.json
+    - fetch profiles to same location
+'''
+
+pd.set_option('display.height', 1000)
+pd.set_option('display.max_rows', 500)
+pd.set_option('display.max_columns', 500)
+pd.set_option('display.width', 1000)
+
+
 # We use the same configuration files as the aimes-emgr-rest server itself.
-#
-config   = ru.read_json('%s/config.json' % os.path.dirname(__file__))
-dburl    = config["mongodb"]
-root     = "%s/swift" % config["path"]
-data     = "%s/data"  % config["path"] # where to store session data
+config = ru.read_json('%s/config.json' % os.path.dirname(__file__))
+dburl  = config["mongodb"]
+
+root = config["path"]
+data_swift = "%s/swift" % root
+data_aimes = "%s/aimes" % root  # where to store session data
 
 # make sure the root exists
-os.system('mkdir -p %s' % root)
-os.system('mkdir -p %s' % data)
+# os.system('mkdir -p %s' % data_swift)
+# os.system('mkdir -p %s' % data_aimes)
 
 # connect to mongodb
-_, db, dbname, _, _ = ru.mongodb_connect (dburl)
+_, db, dbname, _, _ = ru.mongodb_connect(dburl)
 
 
 # ------------------------------------------------------------------------------
 #
 def process_emgr_session(emgr_sid):
     """
-    for each emgr_sid, we expect a data/emgr_sid dir to exist.  In there we expect
-    a session_ids.txt, and call 'process_rp_session' for each of the IDs in that
-    file.
+    for each emgr_sid, we expect a data/emgr_sid dir to exist.  In there we
+    expect a session_ids.txt, and call 'process_rp_session' for each of the IDs
+    in that file.
     """
 
     print "  -- emgr sid: %s" % emgr_sid
 
-    if not os.path.isdir("%s/%s/" % (data, emgr_sid)):
+    if not os.path.isdir("%s/%s/" % (data_aimes, emgr_sid)):
         raise ValueError("no emgr session dir for %s" % emgr_sid)
 
-    with open("%s/%s/session_ids.txt" % (data, emgr_sid), "r") as f:
+    with open("%s/%s/session_ids.txt" % (data_aimes, emgr_sid), "r") as f:
         lines = f.readlines()
         rp_sids = [line.strip() for line in lines]
 
@@ -82,31 +91,26 @@ def process_rp_session(emgr_sid, rp_sid):
 
     print "    -- rp sid: %s" % rp_sid,
 
-    if not os.path.isdir("%s/%s/%s/" % (data, emgr_sid, rp_sid)):
+    if not os.path.isdir("%s/%s/%s/" % (data_aimes, emgr_sid, rp_sid)):
         raise ValueError("no rp session dir for %s" % emgr_sid)
 
-    if os.path.isfile("%s/%s/%s/session.json" % (data, emgr_sid, rp_sid)):
+    if os.path.isfile("%s/%s/%s/session.json" % (data_aimes, emgr_sid, rp_sid)):
         print '...skip'
 
     else:
         # store session data as json
         docs = rp.utils.get_session_docs(db, rp_sid)
-        ru.write_json(docs, "%s/%s/%s/session.json" % (data, emgr_sid, rp_sid))
+        ru.write_json(docs, "%s/%s/%s/session.json" % (data_aimes, emgr_sid, rp_sid))
         print '...done'
-
 
 
 # ------------------------------------------------------------------------------
 #
 if __name__ == "__main__":
 
-    if not os.path.isdir("%s/" % data):
-        raise ValueError("no data dir at %s" % data)
+    if not os.path.isdir("%s/" % data_aimes):
+        raise ValueError("no aimes data dir at %s" % data_aimes)
 
-    emgr_sids = glob.glob("%s/*" % data)
+    emgr_sids = glob.glob("%s/*" % data_aimes)
     for emgr_sid in emgr_sids:
         process_emgr_session(emgr_sid.split('/')[-1])
-
-
-# ------------------------------------------------------------------------------
-
