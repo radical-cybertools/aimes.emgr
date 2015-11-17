@@ -1,10 +1,11 @@
 #!/usr/bin/env python
 
 import os
-import errno
+import sys
 import time
 import glob
 import json
+import errno
 import bottle
 import threading
 
@@ -67,10 +68,35 @@ callback for a CU state change, we can inspect the CU name and map it back to
 the task ID.
 '''
 
+# -----------------------------------------------------------------------------
+def usage(msg=None, noexit=False):
+
+    if msg:
+        print "\nError: %s" % msg
+
+    print """
+    usage   : %s <conf_file>.json
+
+    """ % (sys.argv[0])
+
+    if msg:
+        sys.exit(1)
+
+    if not noexit:
+        sys.exit(0)
+
 # ------------------------------------------------------------------------------
 #
 # read configuration
-config   = ru.read_json('%s/config.json' % os.path.dirname(__file__))
+
+if len(sys.argv) <= 1:
+    usage("insufficient arguments -- need session ID")
+
+if len(sys.argv) > 2:
+    usage("too many arguments -- no more than 1")
+
+# config = ru.read_json('%s/config.json' % os.path.dirname(__file__))
+config = ru.read_json(sys.argv[1])
 
 # Execution
 timeout  = 5       # run workload after 10 seconds of idleness
