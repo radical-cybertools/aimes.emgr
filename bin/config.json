@@ -32,51 +32,32 @@
         "origin"   : "107.21.218.167",
         "username" : "mturilli",
         "resources": {
-            #// "supported": {
-            #//     "hopper.nersc.gov"          : "pbs",
-            #//     "stampede.tacc.xsede.org"   : "slurm",
-            #//     "comet.sdsc.xsede.org"      : "slurm",
-            #//     "supermic.cct-lsu.xsede.org": "pbs",
-            #//     "trestles.sdsc.xsede.org"   : "pbs",
-            #//     "blacklight.psc.xsede.org"  : "pbs",
-            #//     "gordon.sdsc.xsede.org"     : "pbs"
-            #// },
+            # "supported": {
+            #     "hopper.nersc.gov"          : "pbs",
+            #     "stampede.tacc.xsede.org"   : "slurm",
+            #     "comet.sdsc.xsede.org"      : "slurm",
+            #     "supermic.cct-lsu.xsede.org": "pbs",
+            #     "trestles.sdsc.xsede.org"   : "pbs",
+            #     "blacklight.psc.xsede.org"  : "pbs",
+            #     "gordon.sdsc.xsede.org"     : "pbs"
+            # },
             "unsupported": {
-              "supermic.cct-lsu.xsede.org": {
-                  "sched": "pbs",
-                  "fconf": "conf/xsede.supermic.json"
-              },
-              "comet.sdsc.xsede.org": {
-                  "sched": "slurm",
-                  "fconf": "conf/xsede.comet.json"
-              },
-              "gordon.sdsc.xsede.org": {
-                  "sched": "pbs",
-                  "fconf": "conf/xsede.gordon.json"
-              }
-              #   "localhost": {
-              #      "sched": "fork",
-              #      "fconf": "conf/localhost.json"
-              #  }
-            }
-        }
-    },
-    "skeleton": {
-        "templete"     : "./conf/skeleton.template",
-        "task_duration": {
-            "max": 1800,
-            "min": 60,
-            "avg": 900,
-            "std": 300
-        }
-    },
-    "swift": {
-        "workload": {
-            "duration": {
-                "max": 1800,
-                "min": 60,
-                "avg": 900,
-                "std": 300
+                "supermic.cct-lsu.xsede.org": {
+                    "sched": "pbs",
+                    "fconf": "conf/xsede.supermic.json"
+                },
+                "comet.sdsc.xsede.org": {
+                    "sched": "slurm",
+                    "fconf": "conf/xsede.comet.json"
+                },
+                "gordon.sdsc.xsede.org": {
+                    "sched": "pbs",
+                    "fconf": "conf/xsede.gordon.json"
+                }
+                # "localhost": {
+                #     "sched": "fork",
+                #     "fconf": "conf/localhost.json"
+                # }
             }
         }
     }

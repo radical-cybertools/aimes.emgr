@@ -180,7 +180,7 @@ setup_args = {
     },
     'install_requires'   : ['radical.pilot',
                             'aimes.skeleton',
-                            'aimes.bundle',
+                            #'aimes.bundle',
                             'bottle',
                             'requests'
                            ],

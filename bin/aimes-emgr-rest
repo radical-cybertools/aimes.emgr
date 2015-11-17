@@ -186,15 +186,16 @@ def _run_workload(emgr_sid):
                 _timestamp(emgr_sid)
                 return None
 
-            # avoid rerunning units on the next timeout, by creating a new workload
-            # dir for new units, and re-linking the 'workload' link to that one
+            # avoid rerunning units on the next timeout, by creating a new
+            # workload dir for new units, and re-linking the 'workload' link to
+            # that one
             old_wl_name = 'workload_%d' % sessions[emgr_sid]['wlcnt']
             sessions[emgr_sid]['wlcnt'] += 1
             new_wl_name = 'workload_%d' % sessions[emgr_sid]['wlcnt']
 
-            mkdir ('%s/%s/%s' % (data_swift, emgr_sid, new_wl_name))
+            mkdir('%s/%s/%s' % (data_swift, emgr_sid, new_wl_name))
             unlink(cwd, 'workload')
-            link  (cwd, new_wl_name, 'workload')
+            link(cwd, new_wl_name, 'workload')
 
             # at this point we can actually release the session lock -- the new
             # wld pointee is in place and can be used.
@@ -214,7 +215,7 @@ def _run_workload(emgr_sid):
 
         cfg = config
 
-        cfg['scales']         = [len(sw['cuds'])]
+        cfg['scales'] = [len(sw['cuds'])]
         cfg['rerun_attempts'] = 1
 
         # we assume a single run. This makes scales, bindings, time_distribs,
@@ -228,9 +229,9 @@ def _run_workload(emgr_sid):
             pass
         else:
             run = aimes.emgr.create_run_environment(cfg, [cfg['scales'][0],
-                    cfg['bindings'][0], cfg['time_distribs'][0],
-                    cfg['iterations'][0], cfg['rerun_attempts'],
-                    cfg['cores'][0]], 1, 1)
+                cfg['bindings'][0], cfg['time_distribs'][0],
+                cfg['iterations'][0], cfg['rerun_attempts'],
+                cfg['cores'][0]], 1, 1)
 
         # we are not really interested in the workload execution result -- we
         # watch the individual units.  So we execute the workload in the
@@ -241,9 +242,12 @@ def _run_workload(emgr_sid):
             rp_sid = aimes.emgr.execute_swift_workload(cfg, run, sw, _state_cb)
 
             mkdir("%s/%s/%s/" % (data_aimes, emgr_sid, rp_sid))
-            ru.write_json(cfg, "%s/%s/%s/cfg.json"  % (data_aimes, emgr_sid, rp_sid))
-            ru.write_json(sw,  "%s/%s/%s/work.json" % (data_aimes, emgr_sid, rp_sid))
-            with open("%s/%s/session_ids.txt" % (data_aimes, emgr_sid), "a+") as f:
+            ru.write_json(cfg, "%s/%s/%s/cfg.json"  % \
+                (data_aimes, emgr_sid, rp_sid))
+            ru.write_json(sw,  "%s/%s/%s/work.json" % \
+                (data_aimes, emgr_sid, rp_sid))
+            with open("%s/%s/session_ids.txt" % \
+                (data_aimes, emgr_sid), "a+") as f:
                 f.write("%s\n" % rp_sid)
 
         wl_thread = threading.Thread(target=_wl_executor, args=[cfg, run, sw])
@@ -256,7 +260,6 @@ def _run_workload(emgr_sid):
             os.unlink("%s/timestamp" % cwd)
         except:
             pass
-
 
     except Exception as e:
         import logging
@@ -431,7 +434,7 @@ def swift_task_state(emgr_sid=None, emgr_tid=None):
         return {"success" : False,
                 "emgr_sid": emgr_sid,
                 "emgr_sid": emgr_tid,
-                "error"   : "swift task id %s does not exist in session %s" %
+                "error"   : "swift task id %s does not exist in session %s" % \
                     (emgr_tid, emgr_sid)}
 
     with session_lock:
@@ -472,7 +475,7 @@ def swift_task_cancel(emgr_sid=None, emgr_tid=None):
         return {"success" : False,
                 "emgr_sid": emgr_sid,
                 "emgr_sid": emgr_tid,
-                "error"   : "swift task id %s does not exist in session %s" %
+                "error"   : "swift task id %s does not exist in session %s" % \
                     (emgr_tid, emgr_sid)}
 
     with session_lock:
@@ -563,7 +566,7 @@ def _workload_watcher(terminate):
         # avoid busy loop
         time.sleep(1)
 
-# start the workload watcher
+# THE DEMON STARTS HERE! start the workload watcher
 terminate = threading.Event()
 watcher   = threading.Thread(target=_workload_watcher, args=[terminate])
 watcher.start()
