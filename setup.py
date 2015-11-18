@@ -173,7 +173,7 @@ setup_args = {
     'namespace_packages' : ['aimes'],
     'packages'           : find_packages('src'),
     'package_dir'        : {'': 'src'},
-    'scripts'            : ['bin/aimes-emgr-rest'],
+    'scripts'            : ['bin/aimes-emgr-rest', 'bin/aimes-emgr-rest-experiments'],
     'package_data'       : {'': ['*.sh', '*.json', '*.gz', 'VERSION', 'SDIST', sdist_name]},
     'cmdclass'           : {
         'test'           : our_test,

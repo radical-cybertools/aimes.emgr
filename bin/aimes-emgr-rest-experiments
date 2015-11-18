@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 
 import os
+import sys
 import glob
 import pandas as pd
 
@@ -34,14 +35,44 @@ the following actions:
     - fetch profiles to same location
 '''
 
+# -----------------------------------------------------------------------------
+def usage(msg=None, noexit=False):
+
+    if msg:
+        print "\nError: %s" % msg
+
+    print """
+    usage   : %s <conf_file>.json
+
+    """ % (sys.argv[0])
+
+    if msg:
+        sys.exit(1)
+
+    if not noexit:
+        sys.exit(0)
+
+# ------------------------------------------------------------------------------
+#
+# read configuration
+
+if len(sys.argv) <= 1:
+    usage("insufficient arguments -- need session ID")
+
+if len(sys.argv) > 2:
+    usage("too many arguments -- no more than 1")
+
+# config = ru.read_json('%s/config.json' % os.path.dirname(__file__))
+config = ru.read_json(sys.argv[1])
+
 pd.set_option('display.height', 1000)
 pd.set_option('display.max_rows', 500)
 pd.set_option('display.max_columns', 500)
 pd.set_option('display.width', 1000)
 
-
 # We use the same configuration files as the aimes-emgr-rest server itself.
-config = ru.read_json('%s/config.json' % os.path.dirname(__file__))
+# config = ru.read_json('%s/config.json' % os.path.dirname(__file__))
+
 dburl  = config["mongodb"]
 
 root = config["path"]
