@@ -1,0 +1,17 @@
+Setup
+- create a virtual env
+- pip install aimes.emgr
+- pip install aimes.bundle (publish on pypi; use fork until merged)
+- pip install Skeleton (publish on pypi)
+
+Example configuration
+- cd aimes.emgr/etc
+- edit etc/experiment.cfg
+- edit experiment.py
+- edit/add (unsupported) bundle resource conf files in bundle_resources
+
+Example execution
+- ./experiment.py etc/experiment.cfg
+
+Notes
+- Use resources supported by bundles

@@ -1,0 +1,10 @@
+# bundle cluster credential file
+# each line contains credential of a cluster, used for launching a remote connection to the cluster
+# accepted credential fields include: hostname, port, username, password, key_filename
+
+# location of database directory
+# uncomment the following if use different location
+# db_dir=db
+
+# resource list
+${RESOURCE_LIST}

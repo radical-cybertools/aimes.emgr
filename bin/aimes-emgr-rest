@@ -1,0 +1,630 @@
+#!/usr/bin/env python
+
+import os
+import errno
+import time
+import glob
+import json
+import bottle
+import threading
+
+import radical.utils as ru
+
+# We consider a swift session to represent one more-or-less coherent workload
+# which is submitted as a stream of tasks.  We chunk that stream into arbitrary
+# chunks which we call 'emgr-workloads', and hand it over to the aimes-emgr
+# layer for execution.  We will need to maintain a mapping from tasks to
+# workloads, so that we can report state changes to swift.  For that we use the
+# CU 'name' property.  We also ask the emgr to register a state callback for us,
+# because otherwise we'd never lean about unit updates.
+#
+# The API is basically:
+#
+#   emgr_sid = create_swift_session()
+#   emgr_tid = submit_swift_task(emgr_sid, description)
+#   state    = check_state(emgr_sid, emgr_tid)
+#
+# On disk, we basically have this layout:
+#
+#   -- root/
+#      |
+#      +-- emgr_sid/
+#          |
+#          + -- timestamp   # time of last workload execution
+#          + -- workload_01/
+#          |    |
+#          |    +-- units_01.json
+#          |    +-- units_02.json
+#          |
+#          + -- workload_02/
+#          |    |
+#          |    +-- units_03.json
+#          |
+#          | -- workload --> workload_02/
+#               # this symbolic link is always pointing to the workload which is
+#               # currently filled for execution.  When the times execution runs
+#               # this workload, it will reroute the link to a new workload.
+#               # this is why the session lock exists.
+#
+# In order to map swift task descriptions to units IDs, we set the CU name to
+# the task sequence number (which is used as task ID).  When getting an RP
+# callback for a CU state change, we can inspect the CU name and map it back to
+# the task ID.
+#
+# ------------------------------------------------------------------------------
+#
+# read configuration
+#
+config   = ru.read_json('%s/config.json' % os.path.dirname(__file__))
+root     = "%s/swift" % config["path"]
+data     = "%s/data"  % config["path"] # where to store session data
+timeout  = 5       # run workload after 10 seconds of idleness
+fake_ttc = 30      # seconds until a faked task execution is declared done
+sessions = dict()  # record running units
+
+# make sure the root exists
+os.system('mkdir -p %s' % root)
+os.system('mkdir -p %s' % data)
+
+# We lock two entities: timestamp and sessions
+ts_lock      = threading.RLock()
+session_lock = threading.RLock()
+
+
+# ------------------------------------------------------------------------------
+#
+def mkdir(path):
+    try:
+        os.makedirs(path)
+    except OSError as e:
+        if e.errno != errno.EEXIST:
+            raise
+
+def unlink(path, name):
+    os.remove("%s/%s" % (path, name))
+
+def link(path, src, tgt):
+    print "cd %s && ln -s %s %s" % (path, src, tgt)
+    os.system("cd %s && ln -s %s %s" % (path, src, tgt))
+
+
+# ------------------------------------------------------------------------------
+#
+# update timestamps for workloads.  See documentation of _workload_watcher() to
+# see why
+#
+def _timestamp(emgr_sid):
+
+    with ts_lock:
+        now = time.time()
+        os.system('echo "%s" > %s/%s/timestamp' % (now, root, emgr_sid))
+
+
+# ------------------------------------------------------------------------------
+#
+def _get_timestamp(emgr_sid):
+
+    with ts_lock:
+        with open("%s/%s/timestamp" % (root, emgr_sid), "r") as f:
+            return float(f.read().strip())
+
+
+# ------------------------------------------------------------------------------
+#
+# get state notifications
+#
+def _state_cb(unit, state):
+
+    unit_d = unit.as_dict()
+
+    # we dig the emgr_sid and emgr_tid out of the unit name
+    if not unit_d['name'] or not ':' in unit_d['name']:
+        print "state_cb: invalid units name: %s" % unit_d['name']
+        return True
+
+    emgr_sid, emgr_tid = unit_d['name'].split(':', 1)
+
+    with session_lock:
+
+        if not emgr_sid in sessions:
+            print "state_cb: invalid session id: %s" % emgr_sid
+            return True
+
+        if not emgr_tid in sessions[emgr_sid]['tasks']:
+            print "state_cb: invalid task id: %s" % emgr_tid
+            return True
+
+        print 'state_cb: updating task state: %s:%s : %s' % (emgr_sid, emgr_tid, state)
+        sessions[emgr_sid]['tasks'][emgr_tid]['state'] = state
+        return True
+
+
+# ------------------------------------------------------------------------------
+#
+# run a (partial) workload
+#
+def _run_workload(emgr_sid):
+
+    try:
+        with session_lock:
+            cwd = sessions[emgr_sid]['cwd']
+            wld = sessions[emgr_sid]['wld']
+            if not os.path.exists(wld):
+                raise ValueError("swift session id %s is inconsistent" % emgr_sid)
+
+            # we only need to do anything if there are tasks to be executed
+            task_files = glob.glob("%s/*.json" % wld)
+            if not task_files:
+                print "no tasks to execute for session %s (refreshing timestamp)" % emgr_sid
+                _timestamp(emgr_sid)
+                return None
+
+            # avoid rerunning units on the next timeout, by creating a new workload
+            # dir for new units, and re-linking the 'workload' link to that one
+            old_wl_name = 'workload_%d' % sessions[emgr_sid]['wlcnt']
+            sessions[emgr_sid]['wlcnt'] += 1
+            new_wl_name = 'workload_%d' % sessions[emgr_sid]['wlcnt']
+
+            mkdir ('%s/%s/%s' % (root, emgr_sid, new_wl_name))
+            unlink(cwd, 'workload')
+            link  (cwd, new_wl_name, 'workload')
+
+            # at this point we can actually release the session lock -- the new
+            # wld pointee is in place and can be used.
+            #
+
+        # collect all tasks into a swift_workload, as compute unit
+        # descriptions
+        sw = dict()
+        sw['cuds'] = list()
+
+        paths = glob.glob("%s/%s/*" % (cwd, old_wl_name))
+        for f in paths:
+            sw['cuds'].append(ru.read_json(f))
+
+        # manage execution.
+        import aimes.emgr
+
+        cfg = config
+
+        # FIXME: The mapping between two conf structures is redundant. Keep only
+        # config.
+        # cfg['rp_dburl']       = config['mongodb']
+        # cfg['experiment_log'] = config['log']['file']
+        # cfg['workload_type']  = config['workload_type']
+
+        cfg['scales']         = [len(sw['cuds'])]
+        # cfg['bindings']       = config['bindings']
+        # cfg['cores']          = config['cores']
+        # cfg['time_distrib']   = config['time_distribs']
+        # cfg['iterations']     = config['iterations']
+        cfg['rerun_attempts'] = 1
+
+        # cfg['bundle_username']    = config['bundle']['username']
+        # cfg['bundle_dburl']       = config['bundle']['mongodb']
+        # cfg['bundle_template']    = config['bundle']['template']
+        # cfg['bundle_origin']      = config['bundle']['origin']
+        # cfg['bundle_resources'] = config['bundle']['resources']['supported']
+        # cfg['bundle_unsupported'] = config['bundle']['resources']['unsupported']
+
+        # cfg['email_template'] = config['log']['email']['template']
+        # cfg['recipients']     = config['log']['email']['recipients']
+        # cfg['project_ids']    = config['project_ids']
+
+        # we assume a single run. This makes scales, bindings, time_distribs,
+        # iterations, and cores unecessary lists. We are going to assume that
+        # each list as a single value otherwise we trow an error.
+
+        if (len(cfg['scales']) > 1 or len(cfg['bindings']) > 1 or
+                len(cfg['time_distribs']) > 1 or len(cfg['iterations']) > 1 or
+                len(cfg['cores']) > 1):
+            print "Multiple scales, bindings, time distributions, iterations, \
+                   and number of cores not supported in this execution mode"
+            pass
+        else:
+            run = aimes.emgr.create_run_environment(cfg,
+                        [cfg['scales'][0], cfg['bindings'][0],
+                         cfg['time_distribs'][0], cfg['iterations'][0],
+                         cfg['rerun_attempts'], cfg['cores'][0]],
+                        1, 1)
+
+        # we are not really interested in the workload execution result -- we
+        # watch the individual units.  So we execute the workload in the
+        # background in aseparate thread.
+        def _wl_executor(cfg, run, sw):
+            # run the workload, and also pass the state callback so that we get
+            # state notifications
+            rp_sid = aimes.emgr.execute_swift_workload(cfg, run, sw, _state_cb)
+
+            mkdir("%s/%s/%s/" % (data, emgr_sid, rp_sid))
+            ru.write_json(cfg, "%s/%s/%s/cfg.json"  % (data, emgr_sid, rp_sid))
+            ru.write_json(sw,  "%s/%s/%s/work.json" % (data, emgr_sid, rp_sid))
+            with open("%s/%s/session_ids.txt" % (data, emgr_sid), "a+") as f:
+                f.write("%s\n" % rp_sid)
+
+        wl_thread = threading.Thread(target=_wl_executor, args=[cfg, run, sw])
+        wl_thread.start()
+        sessions[emgr_sid]['threads'].append(wl_thread)
+
+        # remove the timestamp -- no need to watch this workload until new units
+        # arrive
+        try:
+            os.unlink("%s/timestamp" % cwd)
+        except:
+            pass
+
+
+    except Exception as e:
+        import logging
+        logging.exception('oops')
+        print "ERROR: workload execution failed: %s" % e
+        raise
+
+
+# ------------------------------------------------------------------------------
+# list all swift workload
+@bottle.route('/swift/sessions/', method='GET')
+def swift_session_list():
+
+    with session_lock:
+        return {"success" : True  ,
+                "paths"   : sessions.keys() }
+
+
+# ------------------------------------------------------------------------------
+# create a new swift workload
+@bottle.route('/swift/sessions/', method='PUT')
+def swift_session_create():
+
+    emgr_sid = ru.generate_id(prefix="emgr_sid.%(days)06d.%(day_counter)04d",
+                          mode=ru.ID_CUSTOM)
+
+    if os.path.exists('%s/%s/' % (root, emgr_sid)):
+        return {"success" : False,
+                "emgr_sid": emgr_sid,
+                "error"   : "swift session '%s' exists" % emgr_sid}
+
+    with session_lock:
+        sessions[emgr_sid]            = dict()
+        sessions[emgr_sid]['tasks']   = dict()
+        sessions[emgr_sid]['threads'] = list()  # active workload executions
+        sessions[emgr_sid]['tcnt']    = 0       # counter for generating task IDs
+        sessions[emgr_sid]['wlcnt']   = 0       # counter for generating workload IDs
+        sessions[emgr_sid]['cwd']     = "%s/%s"          % (root, emgr_sid)
+        sessions[emgr_sid]['wld']     = "%s/%s/workload" % (root, emgr_sid)
+
+        # create the first workload dir, and link 'workload' to it
+        cwd = sessions[emgr_sid]['cwd']
+        wld = sessions[emgr_sid]['wld']
+        wl_name = 'workload_%d' % sessions[emgr_sid]['wlcnt']
+        mkdir('%s/%s/%s' % (root, emgr_sid, wl_name))
+        link (cwd, wl_name, 'workload')
+
+    return {"success" : True,
+            "emgr_sid": emgr_sid,
+            "result"  : "swift session '%s' has been created" % emgr_sid}
+
+
+# ------------------------------------------------------------------------------
+# add a task to a swift workload
+@bottle.route('/swift/sessions/<emgr_sid>', method='PUT')
+def swift_task_submit(emgr_sid=None):
+
+    if not emgr_sid:
+        return {"success" : False,
+                "emgr_sid": emgr_sid,
+                "emgr_tid": None,
+                "error"   : "missing swift session id"}
+
+    # look for in root/<emgr_sid>/
+    if not emgr_sid in sessions:
+        return {"success" : False,
+                "emgr_sid": emgr_sid,
+                "emgr_tid": None,
+                "error"   : "swift session id %s does not exist" % emgr_sid}
+
+    wld = sessions[emgr_sid]['wld']
+    if not os.path.exists(wld):
+        return {"success" : False,
+                "emgr_sid": emgr_sid,
+                "emgr_tid": None,
+                "error"   : "swift session %s is inconsistent" % emgr_sid}
+
+    td = json.loads(bottle.request.forms.get("td"))
+
+    if not td:
+        return {"success" : False,
+                "emgr_sid": emgr_sid,
+                "emgr_tid": None,
+                "error"   : "missing task description"}
+
+    with session_lock:
+        emgr_tid = 'task.%06d' % sessions[emgr_sid]['tcnt']
+        sessions[emgr_sid]['tcnt'] += 1
+
+        # we set the swift task id as CU name, so that we can identify the ytask
+        # later, when getting RP state updates
+        td['name'] = "%s:%s" % (emgr_sid, emgr_tid)
+
+        fname = '%s/%s.json' % (wld, emgr_tid)
+        ru.write_json(td, fname)
+        sessions[emgr_sid]['tasks'][emgr_tid] = dict()
+        sessions[emgr_sid]['tasks'][emgr_tid]['td']      = td
+        sessions[emgr_sid]['tasks'][emgr_tid]['state']   = 'New'
+        sessions[emgr_sid]['tasks'][emgr_tid]['created'] = time.time()
+
+        _timestamp(emgr_sid)
+
+    return {"success" : True,
+            "emgr_sid": emgr_sid,
+            "emgr_tid": emgr_tid,
+            "result"  : "task '%s' created for swift session %s" % (emgr_tid, emgr_sid)}
+
+
+# ------------------------------------------------------------------------------
+# list currently defined units in the session
+@bottle.route('/swift/sessions/<emgr_sid>', method='GET')
+def swift_session_list(emgr_sid=None):
+
+    if not emgr_sid:
+        return {"success" : False,
+                "emgr_sid": emgr_sid,
+                "error"   : "missing swift session id"}
+
+    # look for in root/<emgr_sid>/
+    if not emgr_sid in sessions:
+        return {"success" : False,
+                "emgr_sid": emgr_sid,
+                "error"   : "swift session id %s does not exist" % emgr_sid}
+
+    wld = sessions[emgr_sid]['wld']
+    if not os.path.exists(wld):
+        return {"success" : False,
+                "emgr_sid": emgr_sid,
+                "error"   : "swift session %s is inconsistent" % emgr_sid}
+
+    ret = dict()
+    ret['tasks'] = dict()
+    for t in sessions[emgr_sid]['tasks']:
+        ret['tasks'][t] = dict()
+        ret['tasks'][t]['state'] = sessions[emgr_sid]['tasks'][t]['state']
+
+    bottle.response.content_type = 'application/json'
+    return {"success" : True,
+            "emgr_sid": emgr_sid,
+            "result"  : ret}
+
+
+# ------------------------------------------------------------------------------
+# inspect a single task
+@bottle.route('/swift/sessions/<emgr_sid>/<emgr_tid>', method='GET')
+def swift_task_state(emgr_sid=None, emgr_tid=None):
+
+    if not emgr_sid:
+        return {"success" : False,
+                "emgr_sid": emgr_sid,
+                "emgr_tid": None,
+                "error"   : "missing swift session id"}
+
+    if not emgr_tid:
+        return {"success" : False,
+                "emgr_sid": emgr_sid,
+                "emgr_tid": emgr_tid,
+                "error"   : "missing swift task id"}
+
+    if not emgr_sid in sessions:
+        return {"success" : False,
+                "emgr_sid": emgr_sid,
+                "error"   : "swift session id %s does not exist" % emgr_sid}
+
+    if not emgr_tid in sessions[emgr_sid]['tasks']:
+        return {"success" : False,
+                "emgr_sid": emgr_sid,
+                "emgr_sid": emgr_tid,
+                "error"   : "swift task id %s does not exist in session %s" % (emgr_tid, emgr_sid)}
+
+
+    with session_lock:
+        ret = sessions[emgr_sid]['tasks'][emgr_tid]
+
+
+    bottle.response.content_type = 'application/json'
+    return {"success" : True,
+            "emgr_sid": emgr_sid,
+            "emgr_tid": emgr_tid,
+            "result"  : ret}
+
+
+# ------------------------------------------------------------------------------
+# inspect a single task
+@bottle.route('/swift/sessions/<emgr_sid>/<emgr_tid>', method='DELETE')
+def swift_task_cancel(emgr_sid=None, emgr_tid=None):
+
+    # note that this currently only deletes all knowledge about a task, but does
+    # not actually attempt to cancel the task instance
+
+    if not emgr_sid:
+        return {"success" : False,
+                "emgr_sid": emgr_sid,
+                "emgr_tid": None,
+                "error"   : "missing swift session id"}
+
+    if not emgr_tid:
+        return {"success" : False,
+                "emgr_sid": emgr_sid,
+                "emgr_tid": emgr_tid,
+                "error"   : "missing swift task id"}
+
+    if not emgr_sid in sessions:
+        return {"success" : False,
+                "emgr_sid": emgr_sid,
+                "error"   : "swift session id %s does not exist" % emgr_sid}
+
+    if not emgr_tid in sessions[emgr_sid]['tasks']:
+        return {"success" : False,
+                "emgr_sid": emgr_sid,
+                "emgr_sid": emgr_tid,
+                "error"   : "swift task id %s does not exist in session %s" % (emgr_tid, emgr_sid)}
+
+
+    with session_lock:
+        del(sessions[emgr_sid]['tasks'][emgr_tid])
+
+
+    bottle.response.content_type = 'application/json'
+    return {"success" : True,
+            "emgr_sid": emgr_sid,
+            "emgr_tid": emgr_tid,
+            "result"  : "Task %s in session %s deleted" % (emgr_tid, emgr_sid)}
+
+
+# ------------------------------------------------------------------------------
+#
+# delete a specific workload
+#
+@bottle.route('/swift/sessions/<emgr_sid>', method='DELETE' )
+def swift_session_delete(emgr_sid=None):
+
+    # note that this will not cancel any tasks
+
+    if not emgr_sid:
+        return {"success" : False,
+                "emgr_sid": emgr_sid,
+                "error"   : "missing swift session id"}
+
+    # look for in root/<emgr_sid>/
+    if not emgr_sid in sessions:
+        return {"success" : False,
+                "emgr_sid": emgr_sid,
+                "error"   : "swift session id %s does not exist" % emgr_sid}
+
+    wld = sessions[emgr_sid]['wld']
+    if not os.path.exists(wld):
+        return {"success" : False,
+                "emgr_sid": emgr_sid,
+                "error"   : "swift session %s is inconsistent" % emgr_sid}
+
+
+    with session_lock:
+        del(sessions[emgr_sid])
+        os.system('rm -rf %s/%s' % (root, emgr_sid))
+
+
+    return {"success" : True,
+            "emgr_sid": emgr_sid,
+            "result"  : "workload %s deleted" % emgr_sid}
+
+
+# ------------------------------------------------------------------------------
+#
+# Swift will never know if more tasks get submitted, so it cannot sensibly call
+# 'swift_workload_run'.  We thus run a separate thread which watches all
+# sessions, and if a workload did not see any new units added for N seconds, it
+# will call run on it.
+#
+# FIXME: any error on workload execution will not be visible to the user of the
+#        service.  We should log errors to a file and add a 'workload_status'
+#        method.
+#
+def _workload_watcher(terminate):
+
+    print "timed workload watcher started"
+
+    while not terminate.is_set():
+
+        for emgr_sid in sessions:
+
+          # print "timed workload check for %s" % emgr_sid
+
+            ts_file = "%s/%s/timestamp" % (root, emgr_sid)
+
+            if not os.path.exists(ts_file):
+                # workload does not need any watching
+                continue
+
+            # check if enough time passed -- if not, nothing to do
+            last_action = _get_timestamp(emgr_sid)
+            if (time.time() - last_action) < timeout:
+                print "timed workload check for %s skipped (%.2f < %.2f)" \
+                        % (emgr_sid, (time.time() - last_action), timeout)
+                continue
+
+            # we should run this workload
+            try:
+                print "timed workload run for %s" % emgr_sid
+                _run_workload(emgr_sid)
+            except Exception as e:
+                print "error on timed workload run for %s: %s" % (emgr_sid, e)
+
+        # avoid busy loop
+        time.sleep(1)
+
+# start the workload watcher
+terminate = threading.Event()
+watcher   = threading.Thread(target=_workload_watcher, args=[terminate])
+watcher.start()
+
+
+# ------------------------------------------------------------------------------
+#
+# fake workload executor
+#
+# NOTE: this is debugging entity, and MUST be removed in production
+#       / experiments etc.  This thread will mark all tasks which are
+#       older than 30 seconds as DONE.
+#
+def _workload_executor(terminate):
+
+
+    print "timed workload executor started"
+
+    while not terminate.is_set():
+
+        now = time.time()
+
+        with session_lock:
+
+            for emgr_sid in sessions:
+
+                for emgr_tid in sessions[emgr_sid]['tasks']:
+
+                    created = sessions[emgr_sid]['tasks'][emgr_tid]['created']
+
+                    if  now > (created + fake_ttc) and \
+                        sessions[emgr_sid]['tasks'][emgr_tid]['state'] != 'Done':
+                        print 'updating task state: %s:%s : DONE' % (emgr_sid, emgr_tid)
+                        sessions[emgr_sid]['tasks'][emgr_tid]['state'] = 'Done'
+
+        # avoid busy loop
+        time.sleep(5)
+
+# # start the workload executor
+# executor  = threading.Thread(target=_workload_executor, args=[terminate])
+# executor.start()
+
+
+# ------------------------------------------------------------------------------
+#
+# start the bottle main loop.  This will block as long as the service is alive.
+#
+bottle.run(host='localhost', port=8080, debug=True)
+
+
+# ------------------------------------------------------------------------------
+#
+# the service terminated.  We don't have all state on disk, so will not be able
+# to pick up any sessions, workloads or tasks which are currently executed -- so
+# we can just as well clean the slate. but first stop the watcher so that no new
+# workloads get executed...
+#
+terminate.set()
+watcher.join()
+# executor.join()
+
+# well, we actually don't clean up, so that we can inspect the dir for debug
+# purposes... :P
+# os.system('rm -r %s' % root)
+
+
+# ------------------------------------------------------------------------------
+
