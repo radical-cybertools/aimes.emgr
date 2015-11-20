@@ -305,6 +305,30 @@ def _run_workload(emgr_sid):
 
 
 # ------------------------------------------------------------------------------
+# run an stsubmit command.
+#
+# invoke like this:
+#
+# curl -H "Content-Type: application/txt" -X PUT -d 'stsubmit -a -b -c' http://localhost:8080/swift/stsubmit/
+#
+#
+@bottle.route('/swift/stsubmit/', method='PUT')
+def swift_stsubmit():
+
+    cmd = bottle.request.body.read()
+    print cmd
+
+    if not cmd:
+        return {"success" : False,
+                "emgr_sid": None,
+                "emgr_tid": None,
+                "error"   : "missing stsubmit cmd"}
+
+    return {"success" : True,
+            "result"  : "stsubmit has been executed"}
+
+
+# ------------------------------------------------------------------------------
 # create a new swift workload
 @bottle.route('/swift/sessions/', method='PUT')
 def swift_session_create():
