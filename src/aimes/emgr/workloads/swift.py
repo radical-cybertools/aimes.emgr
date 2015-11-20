@@ -43,7 +43,7 @@ def derive_swift_workload(cfg, sw, run):
         else:
             # FIXME: assumes cu['arguments'][0] to be the number of seconds
             # passed to /bin/sleep
-            workload['t_cus'].append(float(cu['arguments'][0]))
+            workload['t_cus'].append(float(cu['arguments'][-1]))
 
         workload['c_cus'].append(cu['cores'])
 

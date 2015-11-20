@@ -255,9 +255,9 @@ def _run_workload(emgr_sid):
             pass
         else:
             run = aimes.emgr.create_run_environment(cfg, [cfg['scales'][0],
-                cfg['bindings'][0], cfg['time_distribs'][0],
+                cfg['bindings'][0],   cfg['time_distribs'][0],
                 cfg['iterations'][0], cfg['rerun_attempts'],
-                cfg['cores'][0]], 1, 1)
+                cfg['cores'][0]],     1, 1)
 
         # we are not really interested in the workload execution result -- we
         # watch the individual units.  So we execute the workload in the

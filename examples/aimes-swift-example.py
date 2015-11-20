@@ -9,7 +9,8 @@ import time
 import pprint
 import requests
 
-cnt = 0
+N = 10
+
 
 if len(sys.argv) < 2:
     print "\n\n\tusage: %s <rest-endpoint>\n\n" % sys.argv[0]
@@ -25,7 +26,7 @@ ep = sys.argv[1]
 def list_sessions():
     r = requests.get("%s/swift/sessions/" % ep)
     print r
-    print r.json()
+  # print r.json()
 
 
 def create_session():
@@ -37,14 +38,13 @@ def create_session():
 
 
 def add_task(emgr_sid):
-    global cnt
-    cnt += 1
-    cud = {"executable" : "/bin/sleep",
-           "arguments"  : ["%d" % cnt],
-           "cores"      : 1}
+    cud = {"executable"    : "/usr/bin/wc",
+           "arguments"     : ["-l", "passwd", "10"],
+           "input_staging" : ["/etc/passwd"],
+           "cores"         : 1}
     data = {'td': json.dumps(cud)}
     r = requests.put("%s/swift/sessions/%s" % (ep, emgr_sid), data)
-    print r.json()
+  # print r.json()
     return r.json()['emgr_tid']
 
 
@@ -56,12 +56,9 @@ def dump_session(emgr_sid):
 def check_task(emgr_sid, emgr_tid):
     r = requests.get("%s/swift/sessions/%s/%s" % (ep, emgr_sid, emgr_tid))
   # pprint.pprint(r.json())
-    print 'task %s: %s' % (emgr_tid, r.json()['result']['state'])
+  # print 'task %s: %s' % (emgr_tid, r.json()['result']['state'])
 
-    if r.json()['result']['state'].lower() in ['done', 'canceled', 'failed']:
-        return True
-    else:
-        return False
+    return r.json()['result']['state']
 
 
 def run_session(emgr_sid):
@@ -84,9 +81,12 @@ list_sessions()
 tids = list()
 
 print ' ---------- submit tasks'
-tids.append(add_task(emgr_sid))
-tids.append(add_task(emgr_sid))
-tids.append(add_task(emgr_sid))
+start = time.time()
+for i in range(N):
+    tids.append(add_task(emgr_sid))
+stop = time.time()
+print ' ---------- submit rate: %f' % (N/(stop-start))
+
 
 print ' ---------- sleep'
 time.sleep(6)
@@ -94,21 +94,28 @@ time.sleep(6)
 # Now we do the same again, and this batch should get executed in some seconds,
 # too.
 print ' ---------- submit tasks'
-tids.append(add_task(emgr_sid))
-tids.append(add_task(emgr_sid))
-tids.append(add_task(emgr_sid))
+start = time.time()
+for i in range(N):
+    tids.append(add_task(emgr_sid))
+stop = time.time()
+print ' ---------- submit rate: %f' % (N/(stop-start))
 
 while True:
 
+    states = list()
+
     # we wait for all tasks to finish
-    all_finished = True
+    print ' ---------- check  tasks'
+    start = time.time()
     for tid in tids:
-        if not check_task(emgr_sid, tid):
-            all_finished = False
-    if all_finished:
+        states.append(check_task(emgr_sid, tid))
+        final = states.count('Done') + states.count('Canceled') + states.count('Failed')
+    stop = time.time()
+    print ' ---------- check  rate: %f' % (N/(stop-start))
+    if final >= 2*N:
         break
     else:
-        print ' ---------- sleep 10'
+        print ' ---------- sleep 3 (%d)' % final
         time.sleep (10)
 
 print ' ---------- all tasks are final'
