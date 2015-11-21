@@ -8,7 +8,9 @@ import json
 import errno
 import bottle
 import threading
-
+import datetime
+from datetime import datetime
+from bottle import request
 import radical.utils as ru
 
 '''
@@ -343,6 +345,61 @@ def swift_session_create():
             "emgr_sid": emgr_sid,
             "result"  : "swift session '%s' has been created" % emgr_sid}
 
+# ------------------------------------------------------------------------------
+# list all swift workload
+# @bottle.route('/swift/sessions/', method='GET')
+# def swift_session_list():
+
+#     with session_lock:
+#         return {"success" : True  ,
+#                 "paths"   : sessions.keys() }
+
+
+# ------------------------------------------------------------------------------
+# create a new swift workload
+@bottle.route('/swift/sessions/start/', method='PUT')
+def swift_start_session():
+
+    emgr_sid = ru.generate_id(prefix="emgr_sid.%(days)06d.%(day_counter)04d",
+                          mode=ru.ID_CUSTOM)
+
+    if os.path.exists('%s/%s/' % (data_swift, emgr_sid)):
+        # New
+        return "FAIL"
+        # Old
+        return {"success" : False,
+                "emgr_sid": emgr_sid,
+                "error"   : "swift session '%s' exists" % emgr_sid}
+
+    with session_lock:
+        sessions[emgr_sid] = dict()
+        sessions[emgr_sid]['tasks'] = dict()
+
+        # active workload executions
+        sessions[emgr_sid]['threads'] = list()
+
+        # counter for generating task IDs
+        sessions[emgr_sid]['tcnt'] = 0
+
+        # counter for generating workload IDs
+        sessions[emgr_sid]['wlcnt'] = 0
+
+        sessions[emgr_sid]['cwd'] = "%s/%s" % (data_swift, emgr_sid)
+        sessions[emgr_sid]['wld'] = "%s/%s/workload" % (data_swift, emgr_sid)
+
+        # create the first workload dir, and link 'workload' to it
+        cwd = sessions[emgr_sid]['cwd']
+        wl_name = 'workload_%d' % sessions[emgr_sid]['wlcnt']
+        mkdir('%s/%s/%s' % (data_swift, emgr_sid, wl_name))
+        link(cwd, wl_name, 'workload')
+
+    # New
+    return emgr_sid
+    # Old
+    return {"success" : True,
+            "emgr_sid": emgr_sid,
+            "result"  : "swift session '%s' has been created" % emgr_sid}
+
 
 # ------------------------------------------------------------------------------
 # add a task to a swift workload
@@ -369,6 +426,9 @@ def swift_task_submit(emgr_sid=None):
                 "emgr_tid": None,
                 "error"   : "swift session %s is inconsistent" % emgr_sid}
 
+
+    td = json.loads(request.json)
+    print td
     td = json.loads(bottle.request.forms.get("td"))
 
     if not td:
@@ -398,6 +458,195 @@ def swift_task_submit(emgr_sid=None):
             "emgr_sid": emgr_sid,
             "emgr_tid": emgr_tid,
             "result"  : "task '%s' created for swift session %s" % (emgr_tid, emgr_sid)}
+
+
+def filepath_cleanup(filepath):
+    fpath = filepath.strip('\n')
+    if fpath.startswith('file://localhost/'):
+        l = len('file://localhost/')
+        fpath = fpath[l:]
+    return fpath
+
+def compose_compute_unit(task_filename):
+
+    task_desc = open(task_filename, 'r').readlines()
+    index     = 0
+    args      = []
+    stageins  = []
+    stageouts = []
+    env_vars  = {}
+    walltime  = 0
+    while index < len(task_desc):
+        # We don't process directory options.
+        if (task_desc[index].startswith("directory=")):
+            l = len("directory=")
+
+        elif (task_desc[index].startswith("env.")):
+            l   = len("env.")
+            [key,value] = task_desc[index][l:].strip('\n').split("=")
+            env_vars[key] = value
+
+        elif (task_desc[index].startswith("executable=")):
+            l = len("executable=")
+            executable = task_desc[index][l:].strip('\n')
+
+        elif (task_desc[index].startswith("arg=")):
+            l = len("arg=")
+            args.append(task_desc[index][l:].strip('\n'))
+
+        elif (task_desc[index].startswith("stagein.source=")):
+            stagein_item = {}
+            l = len("stagein.source=")
+            stagein_item['source'] = filepath_cleanup(task_desc[index][l:])
+            index += 1
+            if (task_desc[index].startswith("stagein.destination=")):
+                l = len("stagein.destination=")
+                stagein_item['destination'] = filepath_cleanup(task_desc[index][l:])
+                index = index + 1
+                if (task_desc[index].startswith("stagein.mode=")):
+                    l = len("stagein.mode=")
+                    # Ignore mode for now
+                    #stagein_item['destination'] = task_desc[index][l:].strip('\n')
+                    #index += 1
+                else:
+                    index -= 1
+            else:
+                printf("[ERROR] Stagein source must have a destination")
+
+            stageins.append(stagein_item)
+
+        elif (task_desc[index].startswith("stageout.source=")):
+            stageout_item = {}
+            l = len("stageout.source=")
+            stageout_item['source'] = filepath_cleanup(task_desc[index][l:])
+            index += 1
+            if (task_desc[index].startswith("stageout.destination=")):
+                l = len("stageout.destination=")
+                stageout_item['destination'] = filepath_cleanup(task_desc[index][l:])
+                index += 1
+                if (task_desc[index].startswith("stageout.mode=")):
+                    l = len("stageout.mode=")
+                    # Ignore mode for now
+                    #stageout_item['destination'] = task_desc[index][l:].strip('\n')
+                    #index += 1
+                else:
+                    index -= 1
+            else:
+                printf("[ERROR] Stageout source must have a destination")
+            stageouts.append(stageout_item)
+
+        elif (task_desc[index].startswith("attr.maxwalltime=")):
+            l = len("attr.maxwalltime=")
+            d = datetime.strptime(task_desc[index][l:].strip('\n'), "%H:%M:%S")
+            walltime = d.hour*3600 + d.minute*60 + d.second
+
+        else:
+            print "ignoring option : {0}".format(task_desc[index].strip('\n'))
+        index += 1
+
+    # Trim out all info besides the stagein and stageout sources.
+    _stageins  = [x["source"] for x in stageins]
+    _stageouts = [x["source"] for x in stageouts]
+
+    '''
+    logging.debug("ARGS      : {0}".format(args))
+    logging.debug("EXEC      : {0}".format(executable))
+    logging.debug("STAGEINS  : {0}".format(stageins))
+    logging.debug("STAGEOUTS : {0}".format(stageouts))
+    logging.debug("WALLTIME  : {0}".format(walltime))
+    '''
+
+    # Stripping down args to remove swiftwrap
+    stripped_args = []
+    if args[0] == "_swiftwrap.staging":
+        #logging.debug("stripped_args : {0}".format(stripped_args))
+        stripped_args = args[20:]
+        executable = "/bin/sleep"
+
+    jobdesc = {"executable" : str(executable),
+               "arguments"  : [args[-1]],
+               "cores"      : env_vars.get("cores", 1),
+               "duration"   : walltime,
+               "input_staging" : stageins,
+               "output_staging" : stageouts
+               }
+
+    #logging.error("Jobdesc : {0}".format(jobdesc))
+    return jobdesc
+
+# ------------------------------------------------------------------------------
+# add a task to a swift workload
+@bottle.route('/swift/sessions/submit/<emgr_sid>', method='PUT')
+def swift_task_submit(emgr_sid=None):
+
+    if not emgr_sid:
+        return {"success" : False,
+                "emgr_sid": emgr_sid,
+                "emgr_tid": None,
+                "error"   : "missing swift session id"}
+
+    # look for in data_swift/<emgr_sid>/
+    if emgr_sid not in sessions:
+        return {"success" : False,
+                "emgr_sid": emgr_sid,
+                "emgr_tid": None,
+                "error"   : "swift session id %s does not exist" % emgr_sid}
+
+    wld = sessions[emgr_sid]['wld']
+    if not os.path.exists(wld):
+        return {"success" : False,
+                "emgr_sid": emgr_sid,
+                "emgr_tid": None,
+                "error"   : "swift session %s is inconsistent" % emgr_sid}
+
+    body = request.body.read()
+    args = body.split('&')
+    argdict = {}
+    for arg in args:
+        a = arg.split(':')
+        argdict[a[0]] = a[1]
+
+    print "Session id matches ! ", emgr_sid
+
+    print argdict
+    if 'submit' not in argdict:
+        return "FAILED, missing submit script"
+
+    td = compose_compute_unit(argdict['submit'])
+    print td
+    #td = json.loads(bottle.request.forms.get("td"))
+
+    if not td:
+        return {"success" : False,
+                "emgr_sid": emgr_sid,
+                "emgr_tid": None,
+                "error"   : "missing task description"}
+
+    with session_lock:
+        emgr_tid = 'task.%06d' % sessions[emgr_sid]['tcnt']
+        sessions[emgr_sid]['tcnt'] += 1
+
+        # we set the swift task id as CU name, so that we can identify the ytask
+        # later, when getting RP state updates
+        td['name'] = "%s:%s" % (emgr_sid, emgr_tid)
+
+        fname = '%s/%s.json' % (wld, emgr_tid)
+        ru.write_json(td, fname)
+        sessions[emgr_sid]['tasks'][emgr_tid] = dict()
+        sessions[emgr_sid]['tasks'][emgr_tid]['td']      = td
+        sessions[emgr_sid]['tasks'][emgr_tid]['state']   = 'New'
+        sessions[emgr_sid]['tasks'][emgr_tid]['created'] = time.time()
+
+        _timestamp(emgr_sid)
+
+    # New
+    return emgr_tid
+    # Old
+    return {"success" : True,
+            "emgr_sid": emgr_sid,
+            "emgr_tid": emgr_tid,
+            "result"  : "task '%s' created for swift session %s" % (emgr_tid, emgr_sid)}
+
 
 
 # ------------------------------------------------------------------------------
