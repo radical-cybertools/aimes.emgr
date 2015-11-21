@@ -452,7 +452,7 @@ def swift_task_submit(emgr_sid=None):
 
 
     td = json.loads(request.json)
-    print td
+    #print td
     td = json.loads(bottle.request.forms.get("td"))
 
     if not td:
@@ -569,33 +569,20 @@ def compose_compute_unit(task_filename):
         index += 1
 
     # Trim out all info besides the stagein and stageout sources.
-    _stageins  = [x["source"] for x in stageins]
-    _stageouts = [x["source"] for x in stageouts]
+	# destination paths are ignored
+    _stageins  = [x["source"] for x in stageins ]
+	# Wrapper.error is created only on failure and rp staging does not
+	# handle conditional staging. So wrapper.error is ignored.
+    _stageouts = [x["source"] for x in stageouts if x["source"] != 'wrapper.error']
 
-    '''
-    logging.debug("ARGS      : {0}".format(args))
-    logging.debug("EXEC      : {0}".format(executable))
-    logging.debug("STAGEINS  : {0}".format(stageins))
-    logging.debug("STAGEOUTS : {0}".format(stageouts))
-    logging.debug("WALLTIME  : {0}".format(walltime))
-    '''
-
-    # Stripping down args to remove swiftwrap
-    stripped_args = []
-    if args[0] == "_swiftwrap.staging":
-        #logging.debug("stripped_args : {0}".format(stripped_args))
-        stripped_args = args[20:]
-        executable = "/bin/sleep"
-
-    jobdesc = {"executable" : str(executable),
-               "arguments"  : [args[-1]],
-               "cores"      : env_vars.get("cores", 1),
-               "duration"   : walltime,
-               "input_staging" : stageins,
-               "output_staging" : stageouts
+    jobdesc = {"executable"    : str(executable),
+               "arguments"     : args,
+               "cores"         : int(env_vars.get("cores", 1)),
+               "duration"      : walltime,
+               "input_staging" : _stageins,
+               "output_staging": _stageouts
                }
 
-    #logging.error("Jobdesc : {0}".format(jobdesc))
     return jobdesc
 
 # ------------------------------------------------------------------------------
@@ -630,15 +617,14 @@ def swift_task_submit(emgr_sid=None):
         a = arg.split(':')
         argdict[a[0]] = a[1]
 
-    print "Session id matches ! ", emgr_sid
+	#print "Session id matches ! ", emgr_sid
 
-    print argdict
+    #print argdict
     if 'submit' not in argdict:
         return "FAILED, missing submit script"
 
     td = compose_compute_unit(argdict['submit'])
-    print td
-    #td = json.loads(bottle.request.forms.get("td"))
+    #print td
 
     if not td:
         return {"success" : False,
@@ -666,10 +652,10 @@ def swift_task_submit(emgr_sid=None):
     # New
     return emgr_tid
     # Old
-    return {"success" : True,
-            "emgr_sid": emgr_sid,
-            "emgr_tid": emgr_tid,
-            "result"  : "task '%s' created for swift session %s" % (emgr_tid, emgr_sid)}
+    #return {"success" : True,
+    #        "emgr_sid": emgr_sid,
+    #        "emgr_tid": emgr_tid,
+    #        "result"  : "task '%s' created for swift session %s" % (emgr_tid, emgr_sid)}
 
 
 
