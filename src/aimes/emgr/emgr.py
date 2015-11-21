@@ -663,7 +663,7 @@ def execute_swift_workload(cfg, run, swift_workload, swift_cb=None):
 
         run['state'] = 'ACTIVE'
 
-        record_run_state(run)
+        # record_run_state(run)
 
         # SESSION
         # -----------------------------------------------------------------
@@ -671,7 +671,7 @@ def execute_swift_workload(cfg, run, swift_workload, swift_cb=None):
         session           = rp.Session(database_url=cfg['mongodb'])
         run['session_id'] = session.uid
 
-        record_run_session(run)
+        # record_run_session(run)
 
         # RESOURCES
         # ------------------------------------------------------------------
