@@ -98,8 +98,8 @@ class TimeStamp(object):
         self.state = state
         self.run = run
         self.stamp = self._get_stamp()
-        self.epoch = int(time.mktime(time.strptime(self.stamp,
-            self.run.dtpattern)))
+        self.epoch = int(time.mktime(time.strptime(self.stamp, 
+                         self.run.dtpattern)))
 
     def _get_stamp(self):
         stamp = None
@@ -143,10 +143,10 @@ if __name__ == "__main__":
     conf['file_logs'] = sys.argv[1]
     conf['file_json'] = sys.argv[2]
     conf['tcodes'] = {'Submitting': 8, 'Submitted': 1, 'Active': 2,
-        'Completed': 7}
+                      'Completed': 7}
     conf['date_time_pattern'] = "%Y-%m-%d %H:%M:%S"
     conf['re']['date'] = "(\d+-\d+-\d+)"
-    conf['re']['time'] = "(\d:\d+:\d+),\d+-\d+"
+    conf['re']['time'] = "(\d:\d+:\d+),\d+[-,+]\d+"
     conf['re']['start'] = "INFO.*Loader.*JAVA"
     conf['re']['finish'] = "INFO.*Loader.*Swift.*finished.*with.*no.*errors"
     conf['re']['runid'] = ".*INFO.*Loader.*RUN_ID.*(run\d{3}).*"
