@@ -229,19 +229,19 @@ def log_execution_stategy(cfg, run, strategy):
         strategy['inference']['number_pilots']
 
     print >> f, "\tTotal workflow number of cores  : %s" % \
-        strategy['inference']['cores_workflow']
+        strategy['inference']['cores_workload']
 
     print >> f, "\tType of scheduler for RP        : %s" % \
         strategy['inference']['rp_scheduler']
 
     print >> f, "\tTotal workflow compute time     : %s seconds" % \
-        strategy['inference']['compute_time_workflow']
+        strategy['inference']['compute_time_workload']
 
     print >> f, "\tTotal workflow staging time     : %s seconds" % \
-        strategy['inference']['staging_time_workflow']
+        strategy['inference']['staging_time_workload']
 
     print >> f, "\tTotal RP overhead time          : %s seconds" % \
-        strategy['inference']['rp_overhead_time_workflow']
+        strategy['inference']['rp_overhead_time_workload']
 
     print >> f, "\n"
 

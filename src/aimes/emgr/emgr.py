@@ -1,20 +1,3 @@
-
-"""An experiment is coded as a sequence of runs. Each run is repeated for a
-    fixed number of times so to derive appropriate relative errors.
-
-    State model for run:
-
-    States: [DESCRIBED, READY, ACTIVE, FAILED, DONE]
-
-    * A run is DESCRIBED when its properties are defined.
-    * A run becomes READY when its description is queued into the READY queue.
-    * A run becomes ACTIVE when it starts to be processed for execution.
-    * A run has two final states:
-        - A run becomes 'FAILED' when an exception is catch during its
-          execution.
-        - A run becomes 'DONE' when its execution  successfully terminated.
-"""
-
 import os
 import math
 import random
@@ -105,21 +88,21 @@ def finalize_run_environment(cfg, run):
 # -----------------------------------------------------------------------------
 # DERIVING
 # -----------------------------------------------------------------------------
-def derive_workflow(cfg, skeleton, run):
+def derive_workload(cfg, skeleton, run):
     '''Pass
     '''
 
-    workflow = {'skeleton_input_data': 0.0,
+    workload = {'skeleton_input_data': 0.0,
                 'skeleton_output_data': 0.0}
 
-    # Calculate total data size of the given workflow.
+    # Calculate total data size of the given workload.
     for task in skeleton.tasks:
         for i in task.inputs:
-            workflow['skeleton_input_data'] += float(i['size'])
+            workload['skeleton_input_data'] += float(i['size'])
 
     for task in skeleton.tasks:
         for o in task.outputs:
-            workflow['skeleton_output_data'] += float(o['size'])
+            workload['skeleton_output_data'] += float(o['size'])
 
     for stage in skeleton.stages:
 
@@ -143,26 +126,26 @@ def derive_workflow(cfg, skeleton, run):
                     stage_output_data += float(o['size'])
                     stage_output_files += 1
 
-        workflow[stage.name] = {'input' : [stage_input_files,
+        workload[stage.name] = {'input' : [stage_input_files,
                                            stage_input_data],
                                 'output': [stage_output_files,
                                            stage_output_data]}
 
         # FIXME. This is redundant, it will not be necessary once all the above
         # will be available directly via the skeleton API. The dictionary
-        # workflow will then be eliminated.
-        workflow['skeleton_tasks'] = len(skeleton.tasks)
+        # workload will then be eliminated.
+        workload['skeleton_tasks'] = len(skeleton.tasks)
 
         # Execution Boundaries: calculate the min/max time taken by each stage
         # to execute and the mix/max amount of cores needed. Factor data
         # transfer time into min/max time. Note: Max(compute) <=> Min(time) &
         # Min(compute) <=> Max(time)
-        workflow['stages_compute'] = {}
-        workflow['stages_time'] = {}
-        workflow['task_compute'] = {}
-        workflow['task_time'] = {}
-        # workflow['task_compute_sorted'] = []
-        workflow['task_time_sorted'] = []
+        workload['stages_compute'] = {}
+        workload['stages_time'] = {}
+        workload['task_compute'] = {}
+        workload['task_time'] = {}
+        # workload['task_compute_sorted'] = []
+        workload['task_time_sorted'] = []
 
         for task in skeleton.tasks:
 
@@ -175,25 +158,25 @@ def derive_workflow(cfg, skeleton, run):
             # duration for each task.
             if task.length < cfg['skeleton_task_duration']['min']:
 
-                workflow['task_time_sorted'].append(
+                workload['task_time_sorted'].append(
                     cfg['skeleton_task_duration']['min'])
 
             elif task.length > cfg['skeleton_task_duration']['max']:
 
-                workflow['task_time_sorted'].append(
+                workload['task_time_sorted'].append(
                     cfg['skeleton_task_duration']['max'])
 
             else:
-                workflow['task_time_sorted'].append(task.length)
+                workload['task_time_sorted'].append(task.length)
 
             # TASK SIZE (#CORES)
             #
             # The number of cores per task is set in the skeleton conf file as
             # 'Num_Processes'.
-            # workflow['task_compute_sorted'].append(task.cores)
+            # workload['task_compute_sorted'].append(task.cores)
 
-        # workflow['task_compute_sorted'].sort()
-        workflow['task_time_sorted'].sort()
+        # workload['task_compute_sorted'].sort()
+        workload['task_time_sorted'].sort()
 
         # Skeletons do not allow to partition the set of tasks of each stage in
         # set of tasks with different number of cores. The following is a local
@@ -206,17 +189,19 @@ def derive_workflow(cfg, skeleton, run):
         for core in cfg['cores']:
             total_cores += task_partition * core
 
-        workflow['stages_compute']['max'] = total_cores
-        workflow['task_compute']['max'] = cfg['cores'][-1]
-        workflow['task_compute']['min'] = cfg['cores'][0]
+        workload['stages_compute']['max'] = total_cores
+        workload['task_compute']['max'] = cfg['cores'][-1]
+        workload['task_compute']['min'] = cfg['cores'][0]
 
-        workflow['stages_time']['max'] = sum(workflow['task_time_sorted'])
-        workflow['task_time']['max'] = workflow['task_time_sorted'][-1]
-        workflow['task_time']['min'] = workflow['task_time_sorted'][0]
+        workload['stages_time']['max'] = sum(workload['task_time_sorted'])
+        workload['task_time']['max'] = workload['task_time_sorted'][-1]
+        workload['task_time']['min'] = workload['task_time_sorted'][0]
 
-        workflow['skeleton'] = skeleton
+        workload['skeleton'] = skeleton
 
-        return workflow
+        print "DEBUG: workload = %s" % workload
+
+        return workload
 
 
 # -----------------------------------------------------------------------------
@@ -285,7 +270,7 @@ def derive_pilot_descriptions(cfg, strategy):
 
         # Select a specific queue for hopper. This will become another
         # decision point inferred from queue information and inferred
-        # duration of the workflow.
+        # duration of the workload.
         if 'hopper' in pdesc.resource:
             # pdesc.queue = 'regular'
             # Use queue dedicated to CCM scheduler
@@ -302,15 +287,16 @@ def derive_pilot_descriptions(cfg, strategy):
         # affected at relevant scales as the core utilization per pilot will be
         # different and indeterministic with the current scheduling
         # implementation.
-        pdesc.cores = math.ceil(
-            float(strategy['inference']['cores_workflow'] /
-                  strategy['inference']['number_pilots']))
+
+        print "DEBUG: strategy['inference'] = %s" % strategy['inference']
+
+        pdesc.cores = math.ceil(float(strategy['inference']['cores_workload'] / strategy['inference']['number_pilots']))
 
         # Aggregate time components for the pilot walltime.
         pdesc.runtime = math.ceil(
-            (strategy['inference']['compute_time_workflow'] +
-             strategy['inference']['staging_time_workflow'] +
-             strategy['inference']['rp_overhead_time_workflow'])) / 60.0
+            (strategy['inference']['compute_time_workload'] +
+             strategy['inference']['staging_time_workload'] +
+             strategy['inference']['rp_overhead_time_workload'])) / 60.0
 
         # We clean the pilot files once execution is done.
         pdesc.cleanup = True
@@ -321,8 +307,8 @@ def derive_pilot_descriptions(cfg, strategy):
 
 
 # -----------------------------------------------------------------------------
-def derive_cu_descriptions(cfg, run, workflow):
-    '''Derives CU from the tasks on n stages of the given workflow.
+def derive_cu_descriptions(cfg, run, workload):
+    '''Derives CU from the tasks on n stages of the given workload.
     '''
 
     cuds = {}
@@ -333,7 +319,7 @@ def derive_cu_descriptions(cfg, run, workflow):
         cucounters[core] = 1
 
     # Translate skeleton tasks into CUs.
-    for stage in workflow['skeleton'].stages:
+    for stage in workload['skeleton'].stages:
 
         cuds[stage.name] = list()
 
@@ -358,37 +344,42 @@ def derive_cu_descriptions(cfg, run, workflow):
             cud.arguments[1] = str(cud.cores)
 
             cud.pre_exec = list()
-            cud.input_staging = list()
-            cud.output_staging = list()
 
-            # make sure the task is compiled on the fly
-            # FIXME: it does not work with trestles as it assumes only a
-            # working cc compiler.
-            # cud.input_staging.append (aimes.skeleton.TASK_LOCATION)
-            # cud.pre_exec.append      (aimes.skeleton.TASK_COMPILE)
+            # Create description of input file(s) when included in the skeleton
+            # description.
+            if int(task.command.split()[6]) > 0:
 
-            iodirs = task.command.split()[9:-1]
-            odir = iodirs[-1].split('/')[0]
+                cud.input_staging = list()
+                iodirs = task.command.split()[9:-1]
 
-            for i in range(0, len(iodirs)):
+                for i in range(0, len(iodirs)):
 
-                if iodirs[i].split('/')[0] != odir:
-                    idir = iodirs[i].split('/')[0]
-                    break
+                    if iodirs[i].split('/')[0] != odir:
+                        idir = iodirs[i].split('/')[0]
+                        break
 
-            for i in task.inputs:
-                cud.input_staging.append({
-                    'source': idir + '/' + i['name'],
-                    'target': idir + '/' + i['name'],
-                    'flags': rp.CREATE_PARENTS
-                    })
+                for i in task.inputs:
+                    cud.input_staging.append({
+                        'source': idir + '/' + i['name'],
+                        'target': idir + '/' + i['name'],
+                        'flags': rp.CREATE_PARENTS
+                        })
 
-            for o in task.outputs:
-                cud.output_staging.append({
-                    'source': odir + '/' + o['name'],
-                    'target': odir + '/' + o['name'],
-                    'flags': rp.CREATE_PARENTS
-                    })
+            # Create description of output file(s) when included in the skeleton
+            # description.
+            if int(task.command.split()[7]) > 0:
+
+                cud.output_staging = list()
+
+                iodirs = task.command.split()[9:-1]
+                odir = iodirs[-1].split('/')[0]
+
+                for o in task.outputs:
+                    cud.output_staging.append({
+                        'source': odir + '/' + o['name'],
+                        'target': odir + '/' + o['name'],
+                        'flags': rp.CREATE_PARENTS
+                        })
 
             # FIXME: restartable CUs still do not work.
             # cud.restartable = True
@@ -418,8 +409,8 @@ def pilot_state_cb(pilot, state, run):
     # the pilot is not available even if it should be.
     if pilot:
 
-        message = "Pilot pilot-%-13s is %-13s on %s" % (
-            pilot.uid, state, pilot.resource)
+        message = "%s Pilot %-35s is %-25s on %s" % (
+            timestamp(), pilot.uid, state, pilot.resource)
 
         print >> run['log'], message
 
@@ -446,21 +437,22 @@ def unit_state_change_cb(cu, state, run):
 
         if not resource:
 
-            message = "CU %-20s (unit-%s) is %s" % (cu.name, cu.uid, state)
+            message = "%s CU     %-20s (%s) is %s" % (
+                timestamp(), cu.name, cu.uid, state)
 
             print >> run['log'], message
 
         elif not cu.pilot_id:
 
-            message = "CU %-20s (unit-%s) is %-20s on %s" % (
-                cu.name, cu.uid, state, resource)
+            message = "%s CU     %-20s (%s) is %-25s on %s" % (
+                timestamp(), cu.name, cu.uid, state, resource)
 
             print >> run['log'], message
 
         else:
 
-            message = "CU %-20s (unit-%s) is %-20s on %-14s (pilot-%s)" % (
-                cu.name, cu.uid, state, resource, cu.pilot_id)
+            message = "%s CU     %-20s (%s) is %-25s on %-14s (%s)" % (
+                timestamp(), cu.name, cu.uid, state, resource, cu.pilot_id)
 
             print >> run['log'], message
 
@@ -474,8 +466,8 @@ def wait_queue_size_cb(umgr, wait_queue_size, run):
     """Called when the size of the unit managers wait_queue changes.
     """
 
-    message = "UnitManager (unit-manager-%s) has queue size: %s" % (
-        umgr.uid, wait_queue_size)
+    message = "%s UnitManager (unit-manager-%s) has queue size: %s" % (
+        timestamp(), umgr.uid, wait_queue_size)
 
     print >> run['log'], message
 
@@ -499,7 +491,7 @@ def execute_workload(cfg, run):
     TODO: Currently, we leverage the knowledge we have of the skeleton - we as
     in coders. This is ad hoc and will have to be replaced by an automated
     understanding of the constraints on the execution of a specific type of
-    workflow. For example, the experiment will have to learn that the type of
+    workload. For example, the experiment will have to learn that the type of
     Skeleton (or application) is a pipeline and will have to infer that a
     pipeline requires a sequential execution of all its stages.
     '''
@@ -518,7 +510,7 @@ def execute_workload(cfg, run):
 
         record_run_session(run)
 
-        # WORKFLOW
+        # WORKLOAD
         # -----------------------------------------------------------------
         # Acquire and process skeleton.
         skeleton = aimes.skeleton.Skeleton(run['files']['skeleton'])
@@ -527,9 +519,9 @@ def execute_workload(cfg, run):
         skeleton.setup()
 
         # Mine the skeleton for aggregated values.
-        workflow = derive_workflow(cfg, skeleton, run)
+        workload = derive_workload(cfg, skeleton, run)
 
-        log_skeleton(run, workflow)
+        log_skeleton(run, workload)
 
         # RESOURCES
         # ------------------------------------------------------------------
@@ -551,7 +543,7 @@ def execute_workload(cfg, run):
         # STRATEGY
         # ------------------------------------------------------------------
         # Define execution strategy.
-        strategy = derive_execution_stategy_skeleton(cfg, workflow, resources, run)
+        strategy = derive_execution_stategy_skeleton(cfg, workload, resources, run)
 
         log_execution_stategy(cfg, run, strategy)
 
@@ -571,9 +563,9 @@ def execute_workload(cfg, run):
 
         # CU DESCRIPTIONS
         # ------------------------------------------------------------------
-        run['cuds'] = derive_cu_descriptions(cfg, run, workflow)
+        run['cuds'] = derive_cu_descriptions(cfg, run, workload)
 
-        log_cu_descriptions(cfg, run, workflow)
+        log_cu_descriptions(cfg, run, workload)
 
         # PILOT SUBMISSIONS
         # ------------------------------------------------------------------
@@ -601,7 +593,7 @@ def execute_workload(cfg, run):
 
         # EXECUTION
         # ------------------------------------------------------------------
-        for stage in workflow['skeleton'].stages:
+        for stage in workload['skeleton'].stages:
 
             umgr.submit_units(run['cuds'][stage.name])
 
