@@ -303,6 +303,8 @@ def derive_pilot_descriptions(cfg, strategy):
 
         pdescs.append(pdesc)
 
+        print "DEBUG: first pilot description = %s" % pdescs[0]
+
     return pdescs
 
 
@@ -351,6 +353,7 @@ def derive_cu_descriptions(cfg, run, workload):
 
                 cud.input_staging = list()
                 iodirs = task.command.split()[9:-1]
+                odir = iodirs[-1].split('/')[0]
 
                 for i in range(0, len(iodirs)):
 
@@ -391,6 +394,8 @@ def derive_cu_descriptions(cfg, run, workload):
     # list ordering on the ordering of the scheduling on one or more pilots.
     random.shuffle(cuds)
 
+    print "DEBUG: 1st Stage's 1st CU description = %s" % cuds["Stage_1"][0]
+
     return cuds
 
 
@@ -409,7 +414,7 @@ def pilot_state_cb(pilot, state, run):
     # the pilot is not available even if it should be.
     if pilot:
 
-        message = "%s Pilot %-35s is %-25s on %s" % (
+        message = "%s Pilot %-34s is %-25s on %s" % (
             timestamp(), pilot.uid, state, pilot.resource)
 
         print >> run['log'], message
@@ -437,21 +442,21 @@ def unit_state_change_cb(cu, state, run):
 
         if not resource:
 
-            message = "%s CU     %-20s (%s) is %s" % (
+            message = "%s CU    %-20s (%s) is %s" % (
                 timestamp(), cu.name, cu.uid, state)
 
             print >> run['log'], message
 
         elif not cu.pilot_id:
 
-            message = "%s CU     %-20s (%s) is %-25s on %s" % (
+            message = "%s CU    %-20s (%s) is %-25s on %s" % (
                 timestamp(), cu.name, cu.uid, state, resource)
 
             print >> run['log'], message
 
         else:
 
-            message = "%s CU     %-20s (%s) is %-25s on %-14s (%s)" % (
+            message = "%s CU    %-20s (%s) is %-25s on %-14s (%s)" % (
                 timestamp(), cu.name, cu.uid, state, resource, cu.pilot_id)
 
             print >> run['log'], message
