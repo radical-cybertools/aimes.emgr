@@ -1,6 +1,7 @@
 import os
 import math
 import random
+import pprint
 import logging
 import traceback
 
@@ -480,7 +481,7 @@ def wait_queue_size_cb(umgr, wait_queue_size, run):
 # -----------------------------------------------------------------------------
 # EXECUTING
 # -----------------------------------------------------------------------------
-def execute_workload(cfg, run):
+def execute_skeleton_workload(cfg, run):
     '''EXECUTION PATTERN: n stages, sequential:
 
     - Describe CU for stage 1.
@@ -510,7 +511,7 @@ def execute_workload(cfg, run):
         # SESSION
         # -----------------------------------------------------------------
         # Create session in Radical Pilot for this run.
-        session           = rp.Session(database_url=cfg['mongodb'])
+        session = rp.Session(database_url=cfg['mongodb'])
         run['session_id'] = session.uid
 
         record_run_session(run)
@@ -548,7 +549,8 @@ def execute_workload(cfg, run):
         # STRATEGY
         # ------------------------------------------------------------------
         # Define execution strategy.
-        strategy = derive_execution_stategy_skeleton(cfg, workload, resources, run)
+        strategy = derive_execution_stategy_skeleton(cfg, workload, resources,
+                                                     run)
 
         log_execution_stategy(cfg, run, strategy)
 
@@ -646,12 +648,7 @@ def execute_swift_workload(cfg, run, swift_workload, swift_cb=None):
     '''TODO
     '''
 
-    # print 'execute swift workload'
-    import pprint
-    # pprint.pprint(cfg)
-    # pprint.pprint(run)
     pprint.pprint(swift_workload)
-    # return 'wohoo!'
 
     session = None
     sid     = None

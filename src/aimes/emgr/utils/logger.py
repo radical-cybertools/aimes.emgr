@@ -32,10 +32,13 @@ def initialize_runtime(run):
 
     f = open(run['files']['runtime'], "a", 1)
 
-    header    = '[%s] [%s] - Run %d/-%d' % (timestamp(), run['tag'],
-                                            run['number'], run['left'])
-    rdir      = '[%s] [%s] - Root: %s'   % (timestamp(), run['tag'],
-                                            run['root'])
+    header = '[%s] [%s] - Run %d/-%d' % (timestamp(),
+                                         run['tag'],
+                                         run['number'],
+                                         run['left'])
+    rdir = '[%s] [%s] - Root: %s' % (timestamp(),
+                                     run['tag'],
+                                     run['root'])
     separator = "-" * len(header)
 
     print >> f, "%s" % separator
