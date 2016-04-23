@@ -450,9 +450,6 @@ def swift_task_submit(emgr_sid=None):
                 "emgr_tid": None,
                 "error"   : "swift session %s is inconsistent" % emgr_sid}
 
-
-    td = json.loads(request.json)
-    #print td
     td = json.loads(bottle.request.forms.get("td"))
 
     if not td:
