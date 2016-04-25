@@ -19,7 +19,25 @@ __copyright__ = "Copyright 2015, The AIMES Project"
 __license__ = "MIT"
 __credits__ = ["Andre Merzky"]
 
+# =============================================================================
+# session management
+# -----------------------------------------------------------------------------
+#
+# create an emgr session
+#
+_sessions = dict()
+def create_session():
+    
+    sid = ru.generate_id(prefix="emgr.%(days)06d.%(day_counter)04d",
+                         mode=ru.ID_CUSTOM)
 
+    _sessions[sid] = dict()
+
+    return sid
+
+
+# =============================================================================
+# workload management
 # -----------------------------------------------------------------------------
 # SETTING UP
 # -----------------------------------------------------------------------------
@@ -791,3 +809,4 @@ def execute_swift_workload(cfg, run, swift_workload, swift_cb=None):
             email_report(cfg, run)
 
     return sid
+
