@@ -25,7 +25,8 @@ def uri_to_tag(resource):
            'trestles.sdsc.xsede.org'   : 'xsede.trestles',
            'hopper.nersc.gov'          : 'nersc.hopper_ccm',
            'supermic.cct-lsu.xsede.org': 'xsede.supermic',
-           'comet.sdsc.xsede.org'      : 'xsede.comet'}.get(resource)
+           'comet.sdsc.xsede.org'      : 'xsede.comet',
+           'bw.ncsa.illinois.edu'      : 'ncsa.bw'}.get(resource)
 
     if not tag :
         sys.exit("Unknown resource specified in bundle: %s" % resource)
