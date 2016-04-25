@@ -2,71 +2,59 @@
     "path"         : "data/",
     "mongodb"      : "mongodb://54.221.194.147:24242/swift_aimes",
     "workload_type": "swift",
-    "logfile"      : "runtime.log",
-    "bindings": [
-        "late"
-    ],
-    "time_distribs": [
-        "uniform"
-    ],
-    "iterations": [
-        1
-    ],
-    "cores": [
-        1
-    ],
+    "bindings"     : ["late"],
+    "time_distribs": ["uniform"],
+    "iterations"   : [1],
+    "cores"        : [1],
     "project_ids": {
         "xsede.stampede"  : "TG-MCB090174",
-        "xsede.trestles"  : "unc100",
-        "xsede.gordon"    : "unc101",
-        "xsede.blakclight": "unc101",
-        "xsede.supermic"  : "TG-CCR140028",
-        "xsede.comet"     : "unc100"
+        "xsede.gordon"    : "TG-CCR130051"
     },
-    "logging": {
+    "log": {
+        "media": ["file"],
         "file": "runtime.log",
         "email": {
             "template": "./conf/email.template",
-            "recipients": [
-              # "matteo.turilli@gmail.com"
-            ]
+            "recipients": ["matteo.turilli@gmail.com"]
         }
+    },
+    "strategy": {
+        "pct_concurrency": 100,
+        "pct_resources": 100
     },
     "bundle": {
         "mongodb"  : "mongodb://54.221.194.147:24242/swift_aimes_bundle",
         "template" : "./conf/bundle.template",
         "origin"   : "107.21.218.167",
-        "username" : "mturilli",
+        "username" : "yadunand",
         "resources": {
-            "supported": {
-                # "hopper.nersc.gov"          : "pbs",
-                # "stampede.tacc.xsede.org"   : "slurm",
-                # "comet.sdsc.xsede.org"      : "slurm",
-                # "supermic.cct-lsu.xsede.org": "pbs",
-                # "trestles.sdsc.xsede.org"   : "pbs",
-                # "blacklight.psc.xsede.org"  : "pbs",
-                # "gordon.sdsc.xsede.org"     : "pbs"
-            },
+            # "supported": {
+            #     "hopper.nersc.gov"          : "pbs",
+            #     "stampede.tacc.xsede.org"   : "slurm",
+            #     "comet.sdsc.xsede.org"      : "slurm",
+            #     "supermic.cct-lsu.xsede.org": "pbs",
+            #     "trestles.sdsc.xsede.org"   : "pbs",
+            #     "blacklight.psc.xsede.org"  : "pbs",
+            #     "gordon.sdsc.xsede.org"     : "pbs"
+            # },
             "unsupported": {
-                # "supermic.cct-lsu.xsede.org": {
-                #     "sched": "pbs",
-                #     "fconf": "conf/lsu.supermic.json"
-                # },
+                "supermic.cct-lsu.xsede.org": {
+                    "sched": "pbs",
+                    "fconf": "conf/xsede.supermic.json"
+                },
                 "comet.sdsc.xsede.org": {
                     "sched": "slurm",
                     "fconf": "conf/xsede.comet.json"
+                },
+                "gordon.sdsc.xsede.org": {
+                    "sched": "pbs",
+                    "fconf": "conf/xsede.gordon.json"
                 }
-            },
-            "early": "stampede"
-        }
-    },
-    "skeleton": {
-        "templete"     : "./conf/skeleton.template",
-        "task_duration": {
-            "max": 1800,
-            "min": 60,
-            "avg": 900,
-            "std": 300
+                # "localhost": {
+                #     "sched": "fork",
+                #     "fconf": "conf/localhost.json"
+                # }
+            }
         }
     }
 }
