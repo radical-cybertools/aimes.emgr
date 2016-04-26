@@ -285,6 +285,9 @@ def emgr_session_list(emgr_sid=None):
         ret['tasks'][t] = dict()
         ret['tasks'][t]['state'] = sessions[emgr_sid]['tasks'][t]['state']
 
+    # this action keeps the session alive
+    sessions[emgr_sid]['timer'] = time.time()
+
     bottle.response.content_type = 'application/json'
     return {"success" : True,
             "emgr_sid": emgr_sid,
@@ -483,6 +486,10 @@ def emgr_task_submit(emgr_sid=None):
 
         _timestamp(emgr_sid)
 
+    # this action keeps the session alive
+    sessions[emgr_sid]['timer'] = time.time()
+
+    bottle.response.content_type = 'application/json'
     return {"success" : True,
             "emgr_sid": emgr_sid,
             "emgr_tid": emgr_tid,
@@ -520,6 +527,9 @@ def emgr_task_state(emgr_sid=None, emgr_tid=None):
 
     with session_lock:
         ret = sessions[emgr_sid]['tasks'][emgr_tid]
+
+    # this action keeps the session alive
+    sessions[emgr_sid]['timer'] = time.time()
 
     bottle.response.content_type = 'application/json'
     return {"success" : True,
@@ -562,6 +572,9 @@ def emgr_task_cancel(emgr_sid=None, emgr_tid=None):
     with session_lock:
         del(sessions[emgr_sid]['tasks'][emgr_tid])
 
+    # this action keeps the session alive
+    sessions[emgr_sid]['timer'] = time.time()
+
     bottle.response.content_type = 'application/json'
     return {"success" : True,
             "emgr_sid": emgr_sid,
@@ -601,6 +614,9 @@ def _workload_watcher(terminate):
                 print "timed workload check for %s skipped (%.2f < %.2f)" \
                         % (emgr_sid, (time.time() - last_action), timeout)
                 continue
+
+            # this action keeps the session alive
+            sessions[emgr_sid]['timer'] = time.time()
 
             # we should run this workload
             try:
