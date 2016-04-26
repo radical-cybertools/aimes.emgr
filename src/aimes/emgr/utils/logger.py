@@ -278,7 +278,7 @@ def log_pilot_descriptions(run):
 
 
 # -----------------------------------------------------------------------------
-def log_cu_descriptions(cfg, run, workflow):
+def log_cu_descriptions(cfg, run, workflow, cuds):
     '''Pass.
     '''
 
@@ -286,7 +286,7 @@ def log_cu_descriptions(cfg, run, workflow):
 
     title     = 'Compute Unit Descriptions'
     separator = "=" * len(title)
-    cuds      = [j for i in run['cuds'].values() for j in i]
+    cuds      = [j for i in cuds.values() for j in i]
 
     print >> f, "%s\n%s\n%s\n\n" % (separator, title, separator)
 

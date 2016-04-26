@@ -12,6 +12,9 @@ from   datetime import datetime
 
 import radical.utils as ru
 
+import aimes.emgr
+
+
 '''
 We consider a emgr session to represent one more-or-less coherent workload which
 is submitted as one or more streams of tasks.  We chunk those streams into
@@ -102,12 +105,11 @@ if len(sys.argv) <= 1:
 if len(sys.argv) > 2:
     usage("too many arguments -- no more than 1")
 
-# config = ru.read_json('%s/config.json' % os.path.dirname(__file__))
 config = ru.read_json(sys.argv[1])
 
 # Execution
-timeout  = 5       # run workload after 10 seconds of idleness
-fake_ttc = 30      # seconds until a faked task execution is declared done
+timeout    = 5   # run workload after 10 seconds of idleness
+fake_ttc   = 30  # seconds until a faked task execution is declared done
 
 # logging
 root       = config["path"]
@@ -117,9 +119,9 @@ data_aimes = "%s/aimes" % config["path"]
 os.system('mkdir -p %s' % data_swift)
 os.system('mkdir -p %s' % data_aimes)
 
-
 # session registry
 sessions = dict()
+SESSION_TIMEOUT = 600 # seconds idle before close
 
 # we lock timestamps and sessions
 ts_lock      = threading.RLock()
@@ -218,6 +220,7 @@ def emgr_session_create():
 
     with session_lock:
         sessions[emgr_sid] = dict()
+        sessions[emgr_sid]['timer'] = time.time()
         sessions[emgr_sid]['tasks'] = dict()
 
         # active workload executions
@@ -233,14 +236,16 @@ def emgr_session_create():
         sessions[emgr_sid]['wld'] = "%s/%s/workload" % (data_swift, emgr_sid)
 
         # create the first workload dir, and link 'workload' to it
-        cwd = sessions[emgr_sid]['cwd']
+        cwd     = sessions[emgr_sid]['cwd']
         wl_name = 'workload_%d' % sessions[emgr_sid]['wlcnt']
+
         mkdir('%s/%s/%s' % (data_swift, emgr_sid, wl_name))
         link(cwd, wl_name, 'workload')
 
     return {"success" : True,
             "emgr_sid": emgr_sid,
             "result"  : "swift session '%s' has been created" % emgr_sid}
+
 
 # ------------------------------------------------------------------------------
 # list all sessions
@@ -310,6 +315,7 @@ def emgr_session_delete(emgr_sid=None):
                 "error"   : "swift session %s is inconsistent" % emgr_sid}
 
     with session_lock:
+        aimes.emgr.cancel_overlay(emgr_sid)
         del(sessions[emgr_sid])
         os.system('rm -rf %s/%s' % (data_swift, emgr_sid))
 
@@ -366,9 +372,6 @@ def _run_workload(emgr_sid):
         for f in paths:
             sw['cuds'].append(ru.read_json(f))
 
-        # manage execution.
-        import aimes.emgr
-
         cfg = config
 
         cfg['scales'] = [len(sw['cuds'])]
@@ -386,23 +389,24 @@ def _run_workload(emgr_sid):
                    and number of cores not supported in this execution mode"
             pass
         else:
-            run = aimes.emgr.create_run_environment(
-                    cfg,
-                    [cfg['scales'][0],
-                     cfg['bindings'][0],
-                     cfg['time_distribs'][0],
-                     cfg['iterations'][0],
-                     cfg['rerun_attempts'],
-                     cfg['cores'][0]
-                    ], 1, 1)
+            aimes.emgr.create_run_environment(emgr_sid, 
+                                              cfg,
+                                              [cfg['scales'][0],
+                                               cfg['bindings'][0],
+                                               cfg['time_distribs'][0],
+                                               cfg['iterations'][0],
+                                               cfg['rerun_attempts'],
+                                               cfg['cores'][0]
+                                              ], 1, 1)
 
         # we are not really interested in the workload execution result -- we
         # watch the individual units.  So we execute the workload in the
         # background in aseparate thread.
-        def _wl_executor(cfg, run, sw):
+        def _wl_executor(emgr_sid, cfg, sw):
             # run the workload, and also pass the state callback so that we get
             # state notifications
-            rp_sid = aimes.emgr.execute_emgr_workload(cfg, run, sw, _state_cb)
+            rp_sid = aimes.emgr.create_overlay(emgr_sid, cfg, sw)
+            rp_sid = aimes.emgr.execute_workload(emgr_sid, cfg, sw, _state_cb)
 
             session_dir = '%s/%s' % (data_aimes, emgr_sid)
             mkdir("%s/%s/" % (session_dir, rp_sid))
@@ -411,7 +415,7 @@ def _run_workload(emgr_sid):
             with open("%s/session_ids.txt"       % (session_dir), "a+") as f:
                 f.write("%s\n" % rp_sid)
 
-        wl_thread = threading.Thread(target=_wl_executor, args=[cfg, run, sw])
+        wl_thread = threading.Thread(target=_wl_executor, args=[emgr_sid, cfg, sw])
         wl_thread.start()
         sessions[emgr_sid]['threads'].append(wl_thread)
 
@@ -613,27 +617,61 @@ terminate = threading.Event()
 watcher   = threading.Thread(target=_workload_watcher, args=[terminate])
 watcher.start()
 
+# ------------------------------------------------------------------------------
+#
+# Swift will also never terminate sessions, so we start another watcher which
+# will cycle through all sessions, and if it finds one which is idle for longer
+# than 10 mintes, will close it.
+def _session_watcher(terminate):
+
+    print "timed session watcher started"
+
+    while not terminate.is_set():
+
+        to_cancel = list()
+        with session_lock:
+            for esid in sessions:
+
+                if time.time() - sessions[esid]['timer'] > SESSION_TIMEOUT:
+                    to_cancel.append(esid)
+                    del(sessions[esid])
+                
+        for esid in to_cancel:
+            aimes.emgr.cancel_overlay(esid)
+
+        # avoid busy loop
+        time.sleep(1)
+
+swatcher = threading.Thread(target=_session_watcher, args=[terminate])
+swatcher.start()
+
 
 # ==============================================================================
 #
 # main
 #
 # ------------------------------------------------------------------------------
+
 # start bottle main loop.  
 # this will block as long as the service is alive.
-bottle.run(host='localhost', port=8080, debug=True)
+try:
+    bottle.run(host='localhost', port=8080, debug=True)
 
+finally:
+    # the service terminated.  We don't have all state on disk, so will not be
+    # able to pick up any sessions, workloads or tasks which are currently
+    # executed -- so we can just as well clean the slate. but first stop the
+    # watcher so that no new workloads get executed...
+    terminate.set()
+    watcher.join()
+    swatcher.join()
 
-# the service terminated.  We don't have all state on disk, so will not be able
-# to pick up any sessions, workloads or tasks which are currently executed -- so
-# we can just as well clean the slate. but first stop the watcher so that no new
-# workloads get executed...
-terminate.set()
-watcher.join()
-
-# well, we actually don't clean up, so that we can inspect the dir for debug
-# purposes... :P
-# os.system('rm -r %s' % data_swift)
-
+    # kill any session which has not been terminated by the swatcher
+    for esid in sessions:
+        aimes.emgr.cancel_overlay(esid)
+    
+    # we keep the data dir for debugging...
+    # os.system('rm -r %s' % data_swift)
+    
 # ------------------------------------------------------------------------------
 

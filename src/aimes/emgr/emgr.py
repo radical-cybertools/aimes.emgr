@@ -24,6 +24,8 @@ __credits__ = ["Andre Merzky"]
 # -----------------------------------------------------------------------------
 #
 # create an emgr session
+# We should eventually create session objects to keep state between emgr
+# invokations.  For now, the _sessions dict will have to suffice.
 #
 _sessions = dict()
 def create_session():
@@ -31,8 +33,8 @@ def create_session():
     sid = ru.generate_id(prefix="emgr.%(days)06d.%(day_counter)04d",
                          mode=ru.ID_CUSTOM)
 
-    _sessions[sid] = dict()
-
+    _sessions[sid] = {'run_env' : None, 
+                      'overlay' : None}
     return sid
 
 
@@ -41,11 +43,18 @@ def create_session():
 # -----------------------------------------------------------------------------
 # SETTING UP
 # -----------------------------------------------------------------------------
-def create_run_environment(cfg, run_cfg, tracker, q_qsize):
+def create_run_environment(sid, cfg, run_cfg, tracker, q_qsize):
     '''Pass
     '''
 
-    run = {'scale'     : run_cfg[0],
+    assert(sid in _sessions)
+
+    if _sessions[sid]['run_env']:
+        # run env already created
+        return
+
+    run = {'state'     : 'NEW',
+           'scale'     : run_cfg[0],
            'binding'   : run_cfg[1],
            'uniformity': run_cfg[2],
            'iteration' : run_cfg[3],
@@ -91,7 +100,7 @@ def create_run_environment(cfg, run_cfg, tracker, q_qsize):
     # Write the configuration file of the skeleton for this run.
     write_bundle_conf(cfg, run['binding'], run['files']['bundle'])
 
-    return run
+    _sessions[sid]['run_env'] = run
 
 
 # -----------------------------------------------------------------------------
@@ -498,7 +507,7 @@ def wait_queue_size_cb(umgr, wait_queue_size, run):
 # -----------------------------------------------------------------------------
 # EXECUTING
 # -----------------------------------------------------------------------------
-def execute_workload(cfg, run):
+def execute_skeleton_workload(cfg, run):
     '''EXECUTION PATTERN: n stages, sequential:
 
     - Describe CU for stage 1.
@@ -588,7 +597,7 @@ def execute_workload(cfg, run):
         # ------------------------------------------------------------------
         run['cuds'] = derive_cu_descriptions(cfg, run, workload)
 
-        log_cu_descriptions(cfg, run, workload)
+        log_cu_descriptions(cfg, run, workload, run['cuds'])
 
         # PILOT SUBMISSIONS
         # ------------------------------------------------------------------
@@ -660,24 +669,31 @@ def execute_workload(cfg, run):
 #
 # same for a swift workload
 #
-def execute_swift_workload(cfg, run, swift_workload, swift_cb=None):
+def create_overlay(sid, cfg, workload):
     '''TODO
     '''
+
+    assert(sid in _sessions)
+    assert(_sessions[sid]['run_env'])
+
+    if _sessions[sid]['overlay']:
+        # we have an overlay.  We could here adapt it, based on the workload --
+        # but for now we just reuse it.
+        return
+
+
+    run = _sessions[sid]['run_env']
 
     # print 'execute swift workload'
     import pprint
     # pprint.pprint(cfg)
     # pprint.pprint(run)
-    pprint.pprint(swift_workload)
+    pprint.pprint(workload)
     # return 'wohoo!'
 
     session = None
-    sid     = None
 
     try:
-
-        run['state'] = 'ACTIVE'
-
         # record_run_state(run)
 
         # SESSION
@@ -711,7 +727,7 @@ def execute_swift_workload(cfg, run, swift_workload, swift_cb=None):
         # WORKLOAD
         # ------------------------------------------------------------------
         # Derive workload for the execution strategy.
-        sw = derive_swift_workload(cfg, swift_workload, run)
+        sw = derive_swift_workload(cfg, workload, run)
 
         pprint.pprint(sw)
 
@@ -736,12 +752,6 @@ def execute_swift_workload(cfg, run, swift_workload, swift_cb=None):
 
         log_pilot_descriptions(run)
 
-        # CU DESCRIPTIONS
-        # ------------------------------------------------------------------
-        run['cuds'] = derive_cu_descriptions_swift(cfg, run, swift_workload)
-
-        log_cu_descriptions(cfg, run, swift_workload)
-
         # PILOT SUBMISSIONS
         # ------------------------------------------------------------------
         run['pilots']    = pmgr.submit_pilots(run['pdescs'])
@@ -764,14 +774,65 @@ def execute_swift_workload(cfg, run, swift_workload, swift_cb=None):
         umgr.register_callback(unit_state_change_cb,
                                cb_data=run)
 
-        if swift_cb:
-            umgr.register_callback(swift_cb)
+        # this session now has an overlay to run workloads on
+        _sessions[sid]['overlay'] = {'session' : session, 
+                                     'pmgr'    : pmgr, 
+                                     'umgr'    : umgr}
+
+    except Exception as e:
+        # this catches all RP and system exceptions
+        m = "overlay creation failed: %s" % e
+        logging.exception(m)
+        run['state'] = 'FAILED'
+        raise
+
+    except (KeyboardInterrupt, SystemExit) as e:
+        # the callback called sys.exit(), we catch the corresponding
+        # KeyboardInterrupt exception for shutdown.  We also catch
+        # SystemExit which gets raised if the main threads exits for
+        # some other reason.
+        m = "overlay creation aborted: %s" % e
+        logging.exception(m)
+        run['state'] = 'FAILED'
+        raise
+
+    finally:
+        # always clean up the session, no matter whether we caught an
+        # exception
+        record_run_state(run)
+
+# -----------------------------------------------------------------------------
+#
+def execute_workload(sid, cfg, workload, app_cb=None):
+    '''TODO
+    '''
+
+    assert(sid in _sessions)
+    assert(_sessions[sid]['run_env'])
+    assert(_sessions[sid]['overlay'])
+
+    run  = _sessions[sid]['run_env']
+    umgr = _sessions[sid]['overlay']['umgr']
+
+    assert(run['state'] in ['NEW', 'DONE'])
+
+    try:
+        run['state'] = 'ACTIVE'
+
+        if app_cb:
+            umgr.register_callback(app_cb)
 
         log_rp(run)
 
+        # CU DESCRIPTIONS
+        # ------------------------------------------------------------------
+        cuds = derive_cu_descriptions_swift(cfg, run, workload)
+
+        log_cu_descriptions(cfg, run, workload, cuds)
+
         # EXECUTION
         # ------------------------------------------------------------------
-        umgr.submit_units(run['cuds']['all'])
+        umgr.submit_units(cuds['all'])
 
         # Wait for all compute units to finish.
         umgr.wait_units()
@@ -801,12 +862,29 @@ def execute_swift_workload(cfg, run, swift_workload, swift_cb=None):
         # always clean up the session, no matter whether we caught an
         # exception
         record_run_state(run)
-        sid = session.uid
-        if session:
-            session.close(cleanup=False, terminate=True)
 
-        if 'email' in cfg['log']['media']:
-            email_report(cfg, run)
 
-    return sid
+# -----------------------------------------------------------------------------
+#
+def cancel_overlay(sid):
+
+    assert(sid in _sessions)
+
+    if not _sessions[sid]['run_env']:
+        return
+
+    if not _sessions[sid]['overlay']:
+        return
+
+    run     = _sessions[sid]['run_env']
+    session = _sessions[sid]['overlay']['session']
+
+    if session:
+        session.close(cleanup=False, terminate=True)
+
+  # if 'email' in cfg['log']['media']:
+  #     email_report(cfg, run)
+
+
+# -----------------------------------------------------------------------------
 
