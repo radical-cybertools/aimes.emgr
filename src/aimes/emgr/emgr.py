@@ -678,9 +678,18 @@ def create_overlay(sid, cfg, workload):
 
     if _sessions[sid]['overlay']:
         # we have an overlay.  We could here adapt it, based on the workload --
-        # but for now we just reuse it.
-        return
+        # but if the config agrees, we just reuse it
+        if cfg['overlay_reuse'].lower() == 'true':
+            return
 
+
+        # Nah, config says otherwise -- so we give the planner the chance to
+        # adjust the overlay.  At this point we simply kill the existing
+        # overlay, and let the code below create a fresh one.  Later versions
+        # may be more clever...
+        rp_session = _sessions[sid]['overlay']['session']
+        rp_session.close()
+        rp_session = _sessions[sid]['overlay'] = None
 
     run = _sessions[sid]['run_env']
 
