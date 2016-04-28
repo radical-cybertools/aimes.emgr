@@ -647,7 +647,7 @@ def _session_watcher(terminate):
         to_cancel = list()
         with session_lock:
 
-            for esid in sessions[:]:
+            for esid in sessions.keys()[:]:
 
                 if time.time() - sessions[esid]['timer'] > SESSION_TIMEOUT:
                     to_cancel.append(esid)
