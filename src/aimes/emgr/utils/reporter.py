@@ -101,8 +101,8 @@ def email_report(cfg, run):
 
     attachments = []
 
-    subject = '[AIMES experiment] Run %s/-%s (%s) - %s' % \
-        (run['number'], run['left'], run['tag'], run['state'])
+    subject = '[AIMES experiment] Run %s/-%s (%s)' % \
+        (run['number'], run['left'], run['tag'])
 
     diagrams = create_diagram(cfg, run)
 

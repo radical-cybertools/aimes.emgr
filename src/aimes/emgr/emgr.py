@@ -53,8 +53,7 @@ def create_run_environment(sid, cfg, run_cfg, tracker, q_qsize):
         # run env already created
         return
 
-    run = {'state'     : 'NEW',
-           'scale'     : run_cfg[0],
+    run = {'scale'     : run_cfg[0],
            'binding'   : run_cfg[1],
            'uniformity': run_cfg[2],
            'iteration' : run_cfg[3],
@@ -530,8 +529,6 @@ def execute_skeleton_workload(cfg, run):
 
     try:
 
-        run['state'] = 'ACTIVE'
-
         record_run_state(run)
 
         # SESSION
@@ -634,15 +631,11 @@ def execute_skeleton_workload(cfg, run):
 
         # DONE
         # ------------------------------------------------------------------
-        run['state'] = 'DONE'
 
     except Exception as e:
         # this catches all RP and system exceptions
         print "Caught exception: %s" % e
         traceback.print_exc()
-
-        run['state'] = 'FAILED'
-
         raise
 
     except (KeyboardInterrupt, SystemExit) as e:
@@ -651,9 +644,6 @@ def execute_skeleton_workload(cfg, run):
         # SystemExit which gets raised if the main threads exits for
         # some other reason.
         print "Caught exception, exit now: %s" % e
-
-        run['state'] = 'FAILED'
-
         raise
 
     finally:
@@ -792,7 +782,6 @@ def create_overlay(sid, cfg, workload):
         # this catches all RP and system exceptions
         m = "overlay creation failed: %s" % e
         logging.exception(m)
-        run['state'] = 'FAILED'
         raise
 
     except (KeyboardInterrupt, SystemExit) as e:
@@ -802,7 +791,6 @@ def create_overlay(sid, cfg, workload):
         # some other reason.
         m = "overlay creation aborted: %s" % e
         logging.exception(m)
-        run['state'] = 'FAILED'
         raise
 
     finally:
@@ -823,11 +811,7 @@ def execute_workload(sid, cfg, workload, app_cb=None):
     run  = _sessions[sid]['run_env']
     umgr = _sessions[sid]['overlay']['umgr']
 
-    assert(run['state'] in ['NEW', 'DONE'])
-
     try:
-        run['state'] = 'ACTIVE'
-
         if app_cb:
             umgr.register_callback(app_cb)
 
@@ -848,13 +832,11 @@ def execute_workload(sid, cfg, workload, app_cb=None):
 
         # DONE
         # ------------------------------------------------------------------
-        run['state'] = 'DONE'
 
     except Exception as e:
         # this catches all RP and system exceptions
         m = "swift workload execution failed: %s" % e
         logging.exception(m)
-        run['state'] = 'FAILED'
         raise
 
     except (KeyboardInterrupt, SystemExit) as e:
@@ -864,7 +846,6 @@ def execute_workload(sid, cfg, workload, app_cb=None):
         # some other reason.
         m = "swift workload execution aborted: %s" % e
         logging.exception(m)
-        run['state'] = 'FAILED'
         raise
 
     finally:

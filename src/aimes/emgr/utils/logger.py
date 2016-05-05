@@ -330,8 +330,7 @@ def record_run_state(run):
 
     f = run['runtime']
 
-    print >> f, "[%s] [%s] - State: %s" % (timestamp(), run['tag'],
-                                           run['state'])
+    print >> f, "[%s] [%s]" % (timestamp(), run['tag'])
 
     f.flush()
     os.fsync(f)
