@@ -6,6 +6,7 @@
     "time_distribs": ["uniform"],
     "iterations"   : [1],
     "cores"        : [1],
+    "overlay_reuse": "false",
     "project_ids": {
         "xsede.stampede"  : "TG-MCB090174",
         "xsede.gordon"    : "TG-CCR130051"
