@@ -236,11 +236,11 @@ def emgr_session_create():
         sessions[emgr_sid]['wld'] = "%s/%s/workload" % (data_swift, emgr_sid)
 
         # create the first workload dir, and link 'workload' to it
-        cwd     = sessions[emgr_sid]['cwd']
-        wl_name = 'workload_%d' % sessions[emgr_sid]['wlcnt']
+        cwd   = sessions[emgr_sid]['cwd']
+        wl_id = 'workload_%d' % sessions[emgr_sid]['wlcnt']
 
-        mkdir('%s/%s/%s' % (data_swift, emgr_sid, wl_name))
-        link(cwd, wl_name, 'workload')
+        mkdir('%s/%s/%s' % (data_swift, emgr_sid, wl_id))
+        link(cwd, wl_id, 'workload')
 
     return {"success" : True,
             "emgr_sid": emgr_sid,
@@ -355,13 +355,13 @@ def _run_workload(emgr_sid):
             # avoid rerunning units on the next timeout, by creating a new
             # workload dir for new units, and re-linking the 'workload' link to
             # that one
-            old_wl_name = 'workload_%d' % sessions[emgr_sid]['wlcnt']
+            old_wl_id = 'workload_%d' % sessions[emgr_sid]['wlcnt']
             sessions[emgr_sid]['wlcnt'] += 1
-            new_wl_name = 'workload_%d' % sessions[emgr_sid]['wlcnt']
+            new_wl_id = 'workload_%d' % sessions[emgr_sid]['wlcnt']
 
-            mkdir('%s/%s/%s' % (data_swift, emgr_sid, new_wl_name))
+            mkdir('%s/%s/%s' % (data_swift, emgr_sid, new_wl_id))
             unlink(cwd, 'workload')
-            link(cwd, new_wl_name, 'workload')
+            link(cwd, new_wl_id, 'workload')
 
             # at this point we can actually release the session lock -- the new
             # wld pointee is in place and can be used.
@@ -369,9 +369,10 @@ def _run_workload(emgr_sid):
         # collect all tasks into a emgr_workload, as compute unit
         # descriptions
         sw = dict()
-        sw['cuds'] = list()
+        sw['wl_id'] = old_wl_id
+        sw['cuds']  = list()
 
-        paths = glob.glob("%s/%s/*" % (cwd, old_wl_name))
+        paths = glob.glob("%s/%s/*" % (cwd, old_wl_id))
         for f in paths:
             sw['cuds'].append(ru.read_json(f))
 
@@ -408,15 +409,17 @@ def _run_workload(emgr_sid):
         def _wl_executor(emgr_sid, cfg, sw):
             # run the workload, and also pass the state callback so that we get
             # state notifications
-            rp_sid = aimes.emgr.create_overlay(emgr_sid, cfg, sw)
-            rp_sid = aimes.emgr.execute_workload(emgr_sid, cfg, sw, _state_cb)
+            aimes.emgr.create_overlay(emgr_sid, cfg, sw)
+            aimes.emgr.execute_workload(emgr_sid, cfg, sw, _state_cb)
+
+            wl_id = sw['wl_id']
 
             session_dir = '%s/%s' % (data_aimes, emgr_sid)
-            mkdir("%s/%s/" % (session_dir, rp_sid))
-            ru.write_json(cfg, "%s/%s/cfg.json"  % (session_dir, rp_sid))
-            ru.write_json(sw,  "%s/%s/work.json" % (session_dir, rp_sid))
+            mkdir("%s/%s/" % (session_dir, wl_id))
+            ru.write_json(cfg, "%s/%s/cfg.json"  % (session_dir, wl_id))
+            ru.write_json(sw,  "%s/%s/work.json" % (session_dir, wl_id))
             with open("%s/session_ids.txt"       % (session_dir), "a+") as f:
-                f.write("%s\n" % rp_sid)
+                f.write("%s\n" % wl_id)
 
         wl_thread = threading.Thread(target=_wl_executor, args=[emgr_sid, cfg, sw])
         wl_thread.start()
@@ -611,8 +614,8 @@ def _workload_watcher(terminate):
             # check if enough time passed -- if not, nothing to do
             last_action = _get_timestamp(emgr_sid)
             if (time.time() - last_action) < timeout:
-                print "timed workload check for %s skipped (%.2f < %.2f)" \
-                        % (emgr_sid, (time.time() - last_action), timeout)
+              # print "timed workload check for %s skipped (%.2f < %.2f)" \
+              #         % (emgr_sid, (time.time() - last_action), timeout)
                 continue
 
             # this action keeps the session alive
@@ -672,7 +675,7 @@ swatcher.start()
 # start bottle main loop.  
 # this will block as long as the service is alive.
 try:
-    bottle.run(host='localhost', port=8080, debug=True)
+    bottle.run(host='localhost', port=8080, debug=True, quiet=True)
 
 finally:
     # the service terminated.  We don't have all state on disk, so will not be

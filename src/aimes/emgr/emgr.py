@@ -444,6 +444,11 @@ def pilot_state_cb(pilot, state, run):
             timestamp(), pilot.uid, state, pilot.resource)
 
         print >> run['log'], message
+        print message
+
+        if state in [rp.FAILED]:
+            print message
+            raise RuntimeError('pilot %s failed' % pilot.uid)
 
 
 # -----------------------------------------------------------------------------
@@ -490,6 +495,11 @@ def unit_state_change_cb(cu, state, run):
         if state == rp.FAILED:
             print "'%s' stderr: %s." % (cu.uid, cu.stderr)
             print "'%s' stdout: %s." % (cu.uid, cu.stdout)
+
+        if state in [rp.FAILED]:
+            print "'%s' stderr: %s." % (cu.uid, cu.stderr)
+            print "'%s' stdout: %s." % (cu.uid, cu.stdout)
+            raise RuntimeError('pilot %s failed' % pilot.uid)
 
 
 # -----------------------------------------------------------------------------
@@ -649,6 +659,7 @@ def execute_skeleton_workload(cfg, run):
     finally:
         # always clean up the session, no matter whether we caught an
         # exception
+        print 'closing session %s' % session.uid
         record_run_state(run)
         session.close(cleanup=False, terminate=True)
 
@@ -678,6 +689,16 @@ def create_overlay(sid, cfg, workload):
         # overlay, and let the code below create a fresh one.  Later versions
         # may be more clever...
         rp_session = _sessions[sid]['overlay']['session']
+
+        # Well, we need to be more clever now: before killing the session, we
+        # will have to wait for all units to complete.
+        umgrs = rp_session.get_unit_managers()
+        for umgr in umgrs:
+            print 'wait for units before session close'
+            umgr.wait_units()
+
+        # *now* we can close the session...
+        print 'close session befor new overlay creation'
         rp_session.close()
         rp_session = _sessions[sid]['overlay'] = None
 
@@ -687,7 +708,7 @@ def create_overlay(sid, cfg, workload):
     import pprint
     # pprint.pprint(cfg)
     # pprint.pprint(run)
-    pprint.pprint(workload)
+    # pprint.pprint(workload)
     # return 'wohoo!'
 
     session = None
@@ -728,7 +749,7 @@ def create_overlay(sid, cfg, workload):
         # Derive workload for the execution strategy.
         sw = derive_swift_workload(cfg, workload, run)
 
-        pprint.pprint(sw)
+        # pprint.pprint(sw)
 
         # STRATEGY
         # ------------------------------------------------------------------
