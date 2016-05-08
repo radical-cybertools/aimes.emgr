@@ -322,7 +322,7 @@ def derive_pilot_descriptions(cfg, strategy):
         pdesc.runtime = math.ceil(
             (strategy['inference']['compute_time_workload'] +
              strategy['inference']['staging_time_workload'] +
-             strategy['inference']['rp_overhead_time_workload'])) / 60.0
+             strategy['inference']['rp_overhead_time_workload']))  # / 60.0
 
         # We clean the pilot files once execution is done.
         pdesc.cleanup = True
@@ -435,20 +435,15 @@ def pilot_state_cb(pilot, state, run):
     # TODO: Catch an exception when a pilot fails. Check whether all the pilots
     # have failed. If so, set the run state to FAIL.
 
-    # Mitigate the erroneous management of the pilot state from the RP
-    # back-end. In some conditions, the callback is called when the state of
-    # the pilot is not available even if it should be.
-    if pilot:
+    message = "%s Pilot %-34s is %-25s on %s" % (
+        timestamp(), pilot.uid, state, pilot.resource)
 
-        message = "%s Pilot %-34s is %-25s on %s" % (
-            timestamp(), pilot.uid, state, pilot.resource)
+    print >> run['log'], message
+    print message
 
-        print >> run['log'], message
+    if state in [rp.FAILED]:
         print message
-
-        if state in [rp.FAILED]:
-            print message
-            raise RuntimeError('pilot %s failed' % pilot.uid)
+        raise RuntimeError('pilot %s failed' % pilot.uid)
 
 
 # -----------------------------------------------------------------------------
@@ -459,47 +454,44 @@ def unit_state_change_cb(cu, state, run):
     # TODO: issue #5. Catch (and rise?) an exception when a CU fails. When
     # catching it set the state of the run to FAIL.
 
-    # Mitigate the erroneous management of the CU state from the RP back-end.
-    # In some conditions, the callback is called when the state of the CU is
-    # not available even if it should be.
-    if cu:
+    resource = None
 
-        resource = None
+    for pilot in run['pilots']:
+        if pilot.uid == cu.pilot_id:
+            resource = pilot.resource
+            break
 
-        for pilot in run['pilots']:
-            if pilot.uid == cu.pilot_id:
-                resource = pilot.resource
-                break
+    if not resource:
 
-        if not resource:
+        message = "%s CU    %-20s (%s) is %s" % (
+            timestamp(), cu.name, cu.uid, state)
 
-            message = "%s CU    %-20s (%s) is %s" % (
-                timestamp(), cu.name, cu.uid, state)
+        print >> run['log'], message
 
-            print >> run['log'], message
+    elif not cu.pilot_id:
 
-        elif not cu.pilot_id:
+        message = "%s CU    %-20s (%s) is %-25s on %s" % (
+            timestamp(), cu.name, cu.uid, state, resource)
 
-            message = "%s CU    %-20s (%s) is %-25s on %s" % (
-                timestamp(), cu.name, cu.uid, state, resource)
+        print >> run['log'], message
 
-            print >> run['log'], message
+    else:
 
-        else:
+        message = "%s CU    %-20s (%s) is %-25s on %-14s (%s)" % (
+            timestamp(), cu.name, cu.uid, state, resource, cu.pilot_id)
 
-            message = "%s CU    %-20s (%s) is %-25s on %-14s (%s)" % (
-                timestamp(), cu.name, cu.uid, state, resource, cu.pilot_id)
+        print >> run['log'], message
 
-            print >> run['log'], message
+    print message
 
-        if state == rp.FAILED:
-            print "'%s' stderr: %s." % (cu.uid, cu.stderr)
-            print "'%s' stdout: %s." % (cu.uid, cu.stdout)
+    if state == rp.FAILED:
+        print "'%s' stderr: %s." % (cu.uid, cu.stderr)
+        print "'%s' stdout: %s." % (cu.uid, cu.stdout)
 
-        if state in [rp.FAILED]:
-            print "'%s' stderr: %s." % (cu.uid, cu.stderr)
-            print "'%s' stdout: %s." % (cu.uid, cu.stdout)
-            raise RuntimeError('pilot %s failed' % pilot.uid)
+    if state in [rp.FAILED]:
+        print "'%s' stderr: %s." % (cu.uid, cu.stderr)
+        print "'%s' stdout: %s." % (cu.uid, cu.stdout)
+        raise RuntimeError('pilot %s failed' % pilot.uid)
 
 
 # -----------------------------------------------------------------------------
@@ -659,7 +651,8 @@ def execute_skeleton_workload(cfg, run):
     finally:
         # always clean up the session, no matter whether we caught an
         # exception
-        print 'closing session %s' % session.uid
+        print 'close session %s' % session.uid
+        ru.print_stacktrace()
         record_run_state(run)
         session.close(cleanup=False, terminate=True)
 
@@ -891,6 +884,8 @@ def cancel_overlay(sid):
     session = _sessions[sid]['overlay']['session']
 
     if session:
+        print 'cancel session %s' % session.uid
+        ru.print_stacktrace()
         session.close(cleanup=False, terminate=True)
 
   # if 'email' in cfg['log']['media']:

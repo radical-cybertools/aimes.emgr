@@ -197,7 +197,7 @@ def _state_cb(unit, state):
             print "state_cb: invalid task id: %s" % emgr_tid
             return True
 
-        print 'state_cb: updating task state: %s:%s : %s' % (emgr_sid, emgr_tid, state)
+      # print 'unit cb: %s:%s : %s' % (emgr_sid, emgr_tid, state)
         sessions[emgr_sid]['tasks'][emgr_tid]['state'] = state
         return True
 
@@ -299,6 +299,7 @@ def emgr_session_list(emgr_sid=None):
 def emgr_session_delete(emgr_sid=None):
 
     # NOTE: this will not cancel any tasks
+    print 'delete session called'
 
     if not emgr_sid:
         return {"success" : False,
@@ -320,7 +321,7 @@ def emgr_session_delete(emgr_sid=None):
     with session_lock:
         aimes.emgr.cancel_overlay(emgr_sid)
         del(sessions[emgr_sid])
-        os.system('rm -rf %s/%s' % (data_swift, emgr_sid))
+      # os.system('rm -rf %s/%s' % (data_swift, emgr_sid))
 
     return {"success" : True,
             "emgr_sid": emgr_sid,
@@ -484,6 +485,7 @@ def emgr_task_submit(emgr_sid=None):
         ru.write_json(td, fname)
         sessions[emgr_sid]['tasks'][emgr_tid] = dict()
         sessions[emgr_sid]['tasks'][emgr_tid]['td']      = td
+        sessions[emgr_sid]['tasks'][emgr_tid]['uid']     = emgr_tid
         sessions[emgr_sid]['tasks'][emgr_tid]['state']   = 'New'
         sessions[emgr_sid]['tasks'][emgr_tid]['created'] = time.time()
 
@@ -500,9 +502,10 @@ def emgr_task_submit(emgr_sid=None):
 
 
 # ------------------------------------------------------------------------------
-# inspect a single task
-@bottle.route('/emgr/sessions/<emgr_sid>/<emgr_tid>', method='GET')
-def emgr_task_state(emgr_sid=None, emgr_tid=None):
+# inspect a single task, or multiple tasks.  In the latter case, we consider
+# 'emgr_tids' a colon separated list of task IDs
+@bottle.route('/emgr/sessions/<emgr_sid>/<emgr_tids>', method='GET')
+def emgr_task_state(emgr_sid=None, emgr_tids=None):
 
     if not emgr_sid:
         return {"success" : False,
@@ -510,10 +513,10 @@ def emgr_task_state(emgr_sid=None, emgr_tid=None):
                 "emgr_tid": None,
                 "error"   : "missing swift session id"}
 
-    if not emgr_tid:
+    if not emgr_tids:
         return {"success" : False,
                 "emgr_sid": emgr_sid,
-                "emgr_tid": emgr_tid,
+                "emgr_tid": emgr_tids,
                 "error"   : "missing swift task id"}
 
     if emgr_sid not in sessions:
@@ -521,15 +524,20 @@ def emgr_task_state(emgr_sid=None, emgr_tid=None):
                 "emgr_sid": emgr_sid,
                 "error"   : "swift session id %s does not exist" % emgr_sid}
 
-    if emgr_tid not in sessions[emgr_sid]['tasks']:
-        return {"success" : False,
-                "emgr_sid": emgr_sid,
-                "emgr_sid": emgr_tid,
-                "error"   : "swift task id %s does not exist in session %s" % \
-                    (emgr_tid, emgr_sid)}
+    emgr_tids = sorted(emgr_tids.split(':'))
+
+    for emgr_tid in emgr_tids:
+        if emgr_tid not in sessions[emgr_sid]['tasks']:
+            return {"success" : False,
+                    "emgr_sid": emgr_sid,
+                    "emgr_sid": emgr_tid,
+                    "error"   : "swift task id %s does not exist in session %s" % \
+                        (emgr_tid, emgr_sid)}
 
     with session_lock:
-        ret = sessions[emgr_sid]['tasks'][emgr_tid]
+        ret = []
+        for emgr_tid in emgr_tids:
+            ret.append(sessions[emgr_sid]['tasks'][emgr_tid])
 
     # this action keeps the session alive
     sessions[emgr_sid]['timer'] = time.time()
@@ -537,7 +545,7 @@ def emgr_task_state(emgr_sid=None, emgr_tid=None):
     bottle.response.content_type = 'application/json'
     return {"success" : True,
             "emgr_sid": emgr_sid,
-            "emgr_tid": emgr_tid,
+            "emgr_tid": emgr_tids,
             "result"  : ret}
 
 
@@ -662,8 +670,8 @@ def _session_watcher(terminate):
         # avoid busy loop
         time.sleep(1)
 
-swatcher = threading.Thread(target=_session_watcher, args=[terminate])
-swatcher.start()
+# swatcher = threading.Thread(target=_session_watcher, args=[terminate])
+# swatcher.start()
 
 
 # ==============================================================================
@@ -684,7 +692,7 @@ finally:
     # watcher so that no new workloads get executed...
     terminate.set()
     watcher.join()
-    swatcher.join()
+  # swatcher.join()
 
     # kill any session which has not been terminated by the swatcher
     for esid in sessions:
