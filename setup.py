@@ -182,7 +182,8 @@ setup_args = {
                             'aimes.skeleton',
                             #'aimes.bundle',
                             'bottle',
-                            'requests'
+                            'requests',
+                            'flufl.lock'
                            ],
     'tests_require'      : [],
     'test_suite'         : 'aimes.emgr.tests',
