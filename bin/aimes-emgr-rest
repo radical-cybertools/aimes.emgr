@@ -11,6 +11,7 @@ import threading
 from   datetime import datetime
 
 import radical.utils as ru
+import radical.pilot as rp
 
 import aimes.emgr
 
@@ -198,6 +199,8 @@ def _state_cb(unit, state):
             return True
 
       # print 'unit cb: %s:%s : %s' % (emgr_sid, emgr_tid, state)
+        if state == rp.FAILED:
+            state = rp.DONE
         sessions[emgr_sid]['tasks'][emgr_tid]['state'] = state
         return True
 
