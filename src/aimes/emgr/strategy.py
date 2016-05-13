@@ -195,7 +195,8 @@ def derive_execution_stategy_swift(cfg, sw, resources, run):
     #   for each pilot. This value needs to be assessed inferred by a
     #   performance model of RP.
     # rp_overhead_time = 600 + sw['n_cus'] * 4
-    rp_overhead_time = 900 + sw['n_cus'] * 4
+    #rp_overhead_time = 900 + sw['n_cus'] * 4
+    rp_overhead_time = 7200 + sw['n_cus'] * 4
 
     # NUMBER OF CORES: Maximal concurrency is achieved by having 1 core for each
     # core needed by each task of the given workload. A minimal concurrency will

@@ -322,7 +322,7 @@ def derive_pilot_descriptions(cfg, strategy):
         pdesc.runtime = math.ceil(
             (strategy['inference']['compute_time_workload'] +
              strategy['inference']['staging_time_workload'] +
-             strategy['inference']['rp_overhead_time_workload']))  # / 60.0
+             strategy['inference']['rp_overhead_time_workload'])) / 60.0
 
         # We clean the pilot files once execution is done.
         pdesc.cleanup = True
