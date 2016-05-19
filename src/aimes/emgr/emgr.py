@@ -487,11 +487,7 @@ def unit_state_change_cb(cu, state, run):
     if state == rp.FAILED:
         print "'%s' stderr: %s." % (cu.uid, cu.stderr)
         print "'%s' stdout: %s." % (cu.uid, cu.stdout)
-
-    if state in [rp.FAILED]:
-        print "'%s' stderr: %s." % (cu.uid, cu.stderr)
-        print "'%s' stdout: %s." % (cu.uid, cu.stdout)
-        raise RuntimeError('pilot %s failed' % pilot.uid)
+        raise RuntimeError('unit %s failed on %s' % (cu.uid, pilot.uid))
 
 
 # -----------------------------------------------------------------------------

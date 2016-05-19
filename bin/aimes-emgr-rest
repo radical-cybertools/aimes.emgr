@@ -109,7 +109,7 @@ if len(sys.argv) > 2:
 config = ru.read_json(sys.argv[1])
 
 # Execution
-timeout    = 5   # run workload after 10 seconds of idleness
+timeout    = 30  # run workload after x seconds of idleness
 fake_ttc   = 30  # seconds until a faked task execution is declared done
 
 # logging
