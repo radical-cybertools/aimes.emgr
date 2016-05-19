@@ -528,6 +528,12 @@ def emgr_task_state(emgr_sid=None, emgr_tids=None):
                 "error"   : "swift session id %s does not exist" % emgr_sid}
 
     emgr_tids = sorted(emgr_tids.split(':'))
+    if None in emgr_tids:
+        print 'invalid tid: %s' % emgr_tids
+        emgr_tids = [x for x in emgr_tids if x]  # filter out None's
+    if 'None' in emgr_tids:
+        print 'invalid tid: %s' % emgr_tids
+        emgr_tids = [x for x in emgr_tids if x != 'None']  # filter out 'None's
 
     for emgr_tid in emgr_tids:
         if emgr_tid not in sessions[emgr_sid]['tasks']:
@@ -686,7 +692,7 @@ def _session_watcher(terminate):
 # start bottle main loop.  
 # this will block as long as the service is alive.
 try:
-    bottle.run(host='localhost', port=8080, debug=True, quiet=True)
+    bottle.run(host='localhost', port=8090, debug=True, quiet=True)
 
 finally:
     # the service terminated.  We don't have all state on disk, so will not be
