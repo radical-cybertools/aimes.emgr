@@ -434,6 +434,8 @@ def pilot_state_cb(pilot, state, run):
 
     # TODO: Catch an exception when a pilot fails. Check whether all the pilots
     # have failed. If so, set the run state to FAIL.
+    if not pilot:
+        return
 
     message = "%s Pilot %-34s is %-25s on %s" % (
         timestamp(), pilot.uid, state, pilot.resource)
@@ -443,7 +445,7 @@ def pilot_state_cb(pilot, state, run):
 
     if state in [rp.FAILED]:
         print message
-        raise RuntimeError('pilot %s failed' % pilot.uid)
+        #raise RuntimeError('pilot %s failed' % pilot.uid)
 
 
 # -----------------------------------------------------------------------------
@@ -453,6 +455,8 @@ def unit_state_change_cb(cu, state, run):
 
     # TODO: issue #5. Catch (and rise?) an exception when a CU fails. When
     # catching it set the state of the run to FAIL.
+    if not cu:
+        return
 
     resource = None
 
@@ -487,7 +491,7 @@ def unit_state_change_cb(cu, state, run):
     if state == rp.FAILED:
         print "'%s' stderr: %s." % (cu.uid, cu.stderr)
         print "'%s' stdout: %s." % (cu.uid, cu.stdout)
-        raise RuntimeError('unit %s failed on %s' % (cu.uid, pilot.uid))
+      # raise RuntimeError('unit %s failed on %s' % (cu.uid, pilot.uid))
 
 
 # -----------------------------------------------------------------------------
