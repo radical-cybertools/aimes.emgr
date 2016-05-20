@@ -585,7 +585,7 @@ def _session_watcher(terminate):
 # start bottle main loop.  
 # this will block as long as the service is alive.
 try:
-    bottle.run(host='localhost', port=8080, debug=True, quiet=True)
+    bottle.run(host='localhost', port=8090, debug=True, quiet=True)
 
 finally:
     # the service terminated.  We don't have all state on disk, so will not be
