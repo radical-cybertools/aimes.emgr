@@ -500,12 +500,12 @@ def _workload_watcher(terminate):
             new_tasks = glob.glob("%s/task.*.json" % cwd)
             old_tasks = glob.glob("%s/workload/task.*.json" % cwd)
 
-            print 'check %s [%s]: %s, %s' % (emgr_sid, cwd, len(old_tasks), len(new_tasks))
-
             # if there are no new tasks and if there is also no workload waiting
             # to be executed (old_tasks), we have nothing to do...
             if not new_tasks and not old_tasks:
                 continue
+
+            print 'check %s [%s]: %s, %s' % (emgr_sid, cwd, len(old_tasks), len(new_tasks))
 
             if new_tasks:
 
@@ -519,17 +519,17 @@ def _workload_watcher(terminate):
 
                 # check if we have waited long enough to run the old ones
 
-                print 'check up %s>%s for %s' % (now - sessions[emgr_sid]['timer'], timeout, old_tasks)
+              # print 'check up %s>%s for %s' % (now - sessions[emgr_sid]['timer'], timeout, old_tasks)
 
                 if now - sessions[emgr_sid]['timer'] > timeout:
 
-                    print 'run'
                     
                     # ready to execute this workload: move all tasks in
                     # a separate workload.$wcnt, and pass it to execution
                     workload_path = "%s/workload.%03d/" % (cwd, sessions[emgr_sid]['wcnt'])
                     sessions[emgr_sid]['wcnt'] += 1
 
+                    print 'run %s' % workload_path
                     os.system('mkdir -p %s' % workload_path)
                     os.system('mv %s/workload/task*.json %s' % (cwd, workload_path))
                     _run_workload(emgr_sid, workload_path)
