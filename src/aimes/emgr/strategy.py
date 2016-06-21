@@ -47,6 +47,7 @@ def derive_execution_stategy_skeleton(cfg, workload, resources, run):
 
             strategy['inference']['target_resources'].append(uri_to_tag(resource))
 
+
     # CHOOSE NUMBER OF PILOTS: Adopt an heuristics that tells us how many
     # concurrent resources we should choose given the execution time
     # boundaries. We assume that task concurrency should always be maximized we
@@ -114,7 +115,74 @@ def derive_execution_stategy_skeleton(cfg, workload, resources, run):
 
     return strategy
 
+# -----------------------------------------------------------------------------
+def derive_execution_strategy_skeleton_osg(cfg, workload, resources, run):
 
+    #   Initializing data structures
+    strategy = {}
+    strategy['heuristic'] = {}
+    strategy['inference'] = {}
+
+    #   Defining level of concurrency (in %)
+    strategy['heuristic']['percentage_concurrency'] = cfg['pct_concurrency']
+
+    #   Defining the percentage of available resources to use
+    strategy['heuristic']['percentage_resources'] = cfg['pct_resources']
+
+    #   Initializing list of resources to use
+    strategy['inference']['target_resources'] = list()
+
+    #   Defining resources to use for resources which do and do not support bundles
+    for i in range(cfg['num_osg_pilots']):
+        strategy['inference']['target_resources'].append('osg.xsede-virt-clust')
+
+        #   If early binding, then there's no point in adding more than one resources
+        if run['binding'] == 'early':
+                break
+
+    #   Choosing the Number of pilots, assuming max concurrency. Casting the number
+    #   OSG pilots to an int is to ensure that the value of the pilots specified
+    #   is an int. Assertion that the number of pilots submitted is also to ensure
+    #   the user will submit a reasonable number of pilots
+    if strategy['heuristic']['percentage_resources'] == 100:
+        strategy['inference']['number_pilots'] = max(int(cfg['num_osg_pilots']), 1)
+        assert strategy['inference']['number_pilots'] >= 1, "Must specify a positive integer for the number of OSG pilots to submit\n"
+            
+    #   Choosing the scheduler for the CUs. If there is only one pilot. then
+    #   submit directly to the pilot. If there is more than one pilot. The number
+    #   of pilots has been asserted to be a strictly positive integer
+    if strategy['inference']['number_pilots'] > 1:
+        strategy['inference']['rp_scheduler'] = 'SCHED_BACKFILLING'
+    else:
+        strategy['inference']['rp_scheduler'] = 'SCHED_DIRECT_SUBMISSION'
+
+    #   On OSG, it is not necessary to submit a wall time. However, pilots on RP
+    #   require a walltime, so 6 hours is given
+    strategy['inference']['compute_time_workload'] =  21600 # 6 Hours in seconds
+    
+
+    #   Staging Time, the needed to move the I/O files of each task bound to each
+    #   pilot. We assume conservatively 5 sec per 1 MB, but this value will be taken
+    #   dynamically from a monitoring system testing the transfer speed between the
+    #   origin and destination
+
+    if (workload['skeleton_input_data'] > 0 or workload['skeleton_output_data'] > 0):
+        strategy['inference']['staging_time_workload'] = \
+            (workload['skeleton_input_data'] + workload['skeleton_output_data']) / (1024 * 1024 * 5)
+    else:
+        strategy['inference']['staging_time_workload'] = 0
+
+    #   RP Overhead, the time taken by RP to bootstrap and manage each CU for each
+    #   pilot. This value needs to be assessed inferred by a performance model of RP
+    strategy['inference']['rp_overhead_time_workload'] = 600 + (workload['skeleton_tasks'] * 4)
+
+    #   Number of cores. On OSG, the default number of cores is 1. While it may be
+    #   be possible to ask for more cores, we are only use requesting one core
+    strategy['inference']['cores_workload'] = 1
+
+    
+    return strategy
+    
 # -----------------------------------------------------------------------------
 def derive_execution_stategy_swift(cfg, sw, resources, run):
     '''

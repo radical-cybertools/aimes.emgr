@@ -309,6 +309,41 @@ def derive_pilot_descriptions(cfg, strategy):
 
 
 # -----------------------------------------------------------------------------
+def derive_pilot_descriptions_osg(cfg, strategy):
+
+    #   Initializing list used to hold pilot descriptions
+    pdescs = list()
+
+    #   Creating the specified number of OSG pilots. Each pilot is given
+    #   the project ID, resource, number of cores, and wall time
+    for pilot in range(cfg['num_osg_pilots']):
+
+        pdesc = rp.ComputePilotDescription()
+
+        pdesc.project = cfg['project_ids'].get('osg.xsede-virt-clust')
+        pdesc.resource = 'osg.xsede-virt-clust'
+
+        print "DEBUG: strategy['inference'] = %s" % strategy['inference']
+
+        pdesc.cores = 1
+
+        #   The compute time of the workload is 6 Hours. Divide by 60 to
+        #   to express the time in minutes
+        pdesc.runtime = math.ceil( \
+            strategy['inference']['compute_time_workload'] + \
+            strategy['inference']['staging_time_workload'] + \
+            strategy['inference']['rp_overhead_time_workload']) / 60.0
+
+        pdesc.cleanup = True
+        
+        pdescs.append(pdesc)
+
+        print "DEBUG: first pilot description = %s" % pdescs[0]
+
+    return pdescs
+
+
+# -----------------------------------------------------------------------------
 def derive_cu_descriptions(cfg, run, workload):
     '''Derives CU from the tasks on n stages of the given workload.
     '''
@@ -548,7 +583,10 @@ def execute_workload(cfg, run):
         # STRATEGY
         # ------------------------------------------------------------------
         # Define execution strategy.
-        strategy = derive_execution_stategy_skeleton(cfg, workload, resources, run)
+        if 'xd-login.opensciencegrid.org' in cfg['bundle']['resources']['unsupported']:
+            strategy = derive_execution_strategy_skeleton_osg(cfg, workload, resources, run)
+        else:
+            strategy = derive_execution_stategy_skeleton(cfg, workload, resources, run)
 
         log_execution_stategy(cfg, run, strategy)
 
@@ -562,7 +600,10 @@ def execute_workload(cfg, run):
 
         # PILOT DESCRIPTIONS
         # ------------------------------------------------------------------
-        run['pdescs'] = derive_pilot_descriptions(cfg, strategy)
+        if 'xd-login.opensciencegrid.org' in cfg['bundle']['resources']['unsupported']:
+            run['pdescs'] = derive_pilot_descriptions_osg(cfg, strategy)
+        else:
+            run['pdescs'] = derive_pilot_descriptions(cfg, strategy)
 
         log_pilot_descriptions(run)
 
