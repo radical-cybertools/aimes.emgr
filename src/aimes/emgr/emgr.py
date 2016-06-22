@@ -4,6 +4,8 @@ import random
 import logging
 import traceback
 
+from string import split
+
 import radical.pilot as rp
 
 import aimes.bundle
@@ -316,27 +318,30 @@ def derive_pilot_descriptions_osg(cfg, strategy):
 
     #   Creating the specified number of OSG pilots. Each pilot is given
     #   the project ID, resource, number of cores, and wall time
-    for pilot in range(cfg['num_osg_pilots']):
 
-        pdesc = rp.ComputePilotDescription()
+    for resource in strategy['inference']['target_resources']:
 
-        pdesc.project = cfg['project_ids'].get('osg.xsede-virt-clust')
-        pdesc.resource = 'osg.xsede-virt-clust'
+        if split(uri_to_tag(resource), '.')[0] == 'osg':
 
-        print "DEBUG: strategy['inference'] = %s" % strategy['inference']
+            pdesc = rp.ComputePilotDescription()
 
-        pdesc.cores = 1
+            pdesc.project = cfg['project_ids'].get(uri_to_tag(resource))
+            pdesc.resource = uri_to_tag(resource)
 
-        #   The compute time of the workload is 6 Hours. Divide by 60 to
-        #   to express the time in minutes
-        pdesc.runtime = math.ceil( \
-            strategy['inference']['compute_time_workload'] + \
-            strategy['inference']['staging_time_workload'] + \
-            strategy['inference']['rp_overhead_time_workload']) / 60.0
+            print "DEBUG: strategy['inference'] = %s" % strategy['inference']
 
-        pdesc.cleanup = True
+            pdesc.cores = strategy['inference']['cores_workload'][resource]
+
+            #   The compute time of the workload is 6 Hours. Divide by 60 to
+            #   to express the time in minutes
+            pdesc.runtime = math.ceil( \
+                strategy['inference']['compute_time_workload'][resource] + \
+                strategy['inference']['staging_time_workload'] + \
+                strategy['inference']['rp_overhead_time_workload']) / 60.0
+
+            pdesc.cleanup = True
         
-        pdescs.append(pdesc)
+            pdescs.append(pdesc)
 
         print "DEBUG: first pilot description = %s" % pdescs[0]
 
@@ -583,8 +588,30 @@ def execute_workload(cfg, run):
         # STRATEGY
         # ------------------------------------------------------------------
         # Define execution strategy.
-        if 'xd-login.opensciencegrid.org' in cfg['bundle']['resources']['unsupported']:
-            strategy = derive_execution_strategy_skeleton_osg(cfg, workload, resources, run)
+
+        #   Getting a list of the resources which both do and do not support
+        #   bundles.
+
+        bundles_resources = list()
+
+        if 'unsupported' in cfg['bundle']['resources']:
+            bundles_resources = bundles_resources + cfg['bundle']['resources']['unsupported'].keys()
+        if 'supported' in cfg['bundle']['resources']:
+            bundles_resources = bundles_resources + cfg['bundle']['resources']['supported'].keys()
+
+        #   Count the number of times which OSG is used
+        num_osg_used = 0
+        for i in range(len(bundles_resources)):
+            if split(uri_to_tag(bundles_resources[i]), '.')[0] == 'osg':
+                num_osg_used += 1
+
+        #   Check if OSG is used. Broken up into 3 cases. OSG is not used, OSG is used with other
+        #   resources, and OSG is used exclusively
+        if num_osg_used > 0:
+            if num_osg_used == len(bundles_resources):
+                strategy = derive_execution_strategy_skeleton_osg(cfg, workload, resources, run)
+            else:
+                pass    #   Nothing for now
         else:
             strategy = derive_execution_stategy_skeleton(cfg, workload, resources, run)
 
@@ -600,8 +627,11 @@ def execute_workload(cfg, run):
 
         # PILOT DESCRIPTIONS
         # ------------------------------------------------------------------
-        if 'xd-login.opensciencegrid.org' in cfg['bundle']['resources']['unsupported']:
-            run['pdescs'] = derive_pilot_descriptions_osg(cfg, strategy)
+        if num_osg_used > 0:
+            if num_osg_used == len(bundles_resources):
+                run['pdescs'] = derive_pilot_descriptions_osg(cfg, strategy)
+            else:
+                pass
         else:
             run['pdescs'] = derive_pilot_descriptions(cfg, strategy)
 
@@ -621,6 +651,7 @@ def execute_workload(cfg, run):
         # UNIT MANAGERS
         # ------------------------------------------------------------------
         scheduler = {'SCHED_BACKFILLING'      : rp.SCHED_BACKFILLING,
+                     'SCHED_ROUND_ROBIN'      : rp.SCHED_ROUND_ROBIN,
                      'SCHED_DIRECT_SUBMISSION': rp.SCHED_DIRECT_SUBMISSION
                     }[strategy['inference']['rp_scheduler']]
 

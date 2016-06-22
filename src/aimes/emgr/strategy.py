@@ -1,3 +1,4 @@
+from string import split
 import math
 
 from aimes.emgr.utils import *
@@ -123,6 +124,9 @@ def derive_execution_strategy_skeleton_osg(cfg, workload, resources, run):
     strategy['heuristic'] = {}
     strategy['inference'] = {}
 
+    osg_walltime = dict()
+    osg_cores = dict()
+
     #   Defining level of concurrency (in %)
     strategy['heuristic']['percentage_concurrency'] = cfg['pct_concurrency']
 
@@ -133,19 +137,50 @@ def derive_execution_strategy_skeleton_osg(cfg, workload, resources, run):
     strategy['inference']['target_resources'] = list()
 
     #   Defining resources to use for resources which do and do not support bundles
-    for i in range(cfg['num_osg_pilots']):
-        strategy['inference']['target_resources'].append('osg.xsede-virt-clust')
+    #   Also, keeping a dictionary of the walltime and number of cores requested.
+    #   Appending the resource directly instead of the uri_to_tag of a resource in
+    #   on the off chance that two different head nodes use the same config node
+    #   Postponing the translation makes it easier to keep separate the different
+    #   configurable values which the user can change (namely, cores and walltime)
+    if 'supported' in cfg['bundle']['resources']:
+        for resource in cfg['bundle']['resources']['supported'].keys():
+            if split(uri_to_tag(resource), '.')[0] == 'osg':
+                #   Checking for unique values for requested walltimes on OSG
+                if resource not in osg_walltime:
+                    osg_walltime[resource] = cfg['bundle']['resources']['supported'][resource]['walltime']
+                #   Checking for unique values of cores requeted on OSG
+                if resource not in osg_cores:
+                    osg_cores[resource] = cfg['bundle']['resources']['supported'][resource]['cores']
+                for i in range(cfg['bundle']['resources']['supported'][resource]['num_pilots']):
+                    strategy['inference']['target_resources'].append(resource)
 
-        #   If early binding, then there's no point in adding more than one resources
-        if run['binding'] == 'early':
-                break
+                    #   If early binding, then there's no point in adding more than one resources
+                    if run['binding'] == 'early':
+                        break
+
+    if 'unsupported' in cfg['bundle']['resources']:
+        for resource in cfg['bundle']['resources']['unsupported'].keys():
+            if split(uri_to_tag(resource), '.')[0] == 'osg':
+                #   Checking for unique values for requested walltimes on OSG
+                if resource not in osg_walltime:
+                    osg_walltime[resource] = cfg['bundle']['resources']['unsupported'][resource]['walltime']
+                #   Checking for unique values of cores requeted on OSG
+                if resource not in osg_cores:
+                    osg_cores[resource] = cfg['bundle']['resources']['unsupported'][resource]['cores']
+                for i in range(cfg['bundle']['resources']['unsupported'][resource]['num_pilots']):
+                    strategy['inference']['target_resources'].append(resource)
+
+                    #   If early binding, then there's no point in adding more than one resources
+                    if run['binding'] == 'early':
+                        break
+
 
     #   Choosing the Number of pilots, assuming max concurrency. Casting the number
     #   OSG pilots to an int is to ensure that the value of the pilots specified
     #   is an int. Assertion that the number of pilots submitted is also to ensure
     #   the user will submit a reasonable number of pilots
     if strategy['heuristic']['percentage_resources'] == 100:
-        strategy['inference']['number_pilots'] = max(int(cfg['num_osg_pilots']), 1)
+        strategy['inference']['number_pilots'] = len(strategy['inference']['target_resources'])
         assert strategy['inference']['number_pilots'] >= 1, "Must specify a positive integer for the number of OSG pilots to submit\n"
             
     #   Choosing the scheduler for the CUs. If there is only one pilot. then
@@ -154,11 +189,13 @@ def derive_execution_strategy_skeleton_osg(cfg, workload, resources, run):
     if strategy['inference']['number_pilots'] > 1:
         strategy['inference']['rp_scheduler'] = 'SCHED_BACKFILLING'
     else:
-        strategy['inference']['rp_scheduler'] = 'SCHED_DIRECT_SUBMISSION'
+        strategy['inference']['rp_scheduler'] = 'SCHED_ROUND_ROBIN'
 
-    #   On OSG, it is not necessary to submit a wall time. However, pilots on RP
-    #   require a walltime, so 6 hours is given
-    strategy['inference']['compute_time_workload'] =  21600 # 6 Hours in seconds
+    #   On OSG, it is not necessary to submit a wall time. However, different to provide
+    #   the functionality to submit to OSG via different login/head nodes with different
+    #   walltimes, we feed a dictionary of the walltimes which will be parsed in the
+    #   when deriving pilot descriptions
+    strategy['inference']['compute_time_workload'] = osg_walltime
     
 
     #   Staging Time, the needed to move the I/O files of each task bound to each
@@ -176,9 +213,11 @@ def derive_execution_strategy_skeleton_osg(cfg, workload, resources, run):
     #   pilot. This value needs to be assessed inferred by a performance model of RP
     strategy['inference']['rp_overhead_time_workload'] = 600 + (workload['skeleton_tasks'] * 4)
 
-    #   Number of cores. On OSG, the default number of cores is 1. While it may be
-    #   be possible to ask for more cores, we are only use requesting one core
-    strategy['inference']['cores_workload'] = 1
+    #   Number of cores. On OSG, we can request any number of cores, though 1 is the
+    #   most typical value. To allow for the capability to request different numbers
+    #   of cores at different login/head nodes of OSG, we feed a dictionary of number
+    #   of cores which will be requested.
+    strategy['inference']['cores_workload'] = osg_cores
 
     
     return strategy
