@@ -113,11 +113,11 @@ def email_report(cfg, run):
     attachments.append(dump_db(cfg, run))
     attachments.append(run['files']['log'])
 
-    body = write_email_body(cfg, run)
+#    body = write_email_body(cfg, run)
 
-    send_email(cfg, cfg['log']['email']['recipients'][0],
-               cfg['log']['email']['recipients'],
-               subject, body, attachments)
+#    send_email(cfg, cfg['log']['email']['recipients'][0],
+#               cfg['log']['email']['recipients'],
+#               subject, body, attachments)
 
 
 # -----------------------------------------------------------------------------

@@ -361,12 +361,18 @@ def derive_cu_descriptions(cfg, run, workload):
         cucounters[core] = 1
 
     # Translate skeleton tasks into CUs.
+
+    #   Manually Fixing Workload. Done to integrate Synapse profiles with Skeleton generation
+    task_command = 'aimes-skeleton-synapse.py serial flops 1 1715750072310 65536 65536 0 0 0'
+
+
     for stage in workload['skeleton'].stages:
 
         cuds[stage.name] = list()
 
         for task in stage.tasks:
 
+            task.command = task_command
             cud = rp.ComputeUnitDescription()
 
             # Introduce heterogeneity in #cores of the workload. It assumes
@@ -379,18 +385,35 @@ def derive_cu_descriptions(cfg, run, workload):
                     break
 
             cud.name = stage.name+'_'+task.name
-            cud.executable = task.command.split()[0]
+
+            cud.executable = "python $HOME/Skeleton-feature-task_flops/bin/" + task.command.split()[0]
             cud.arguments = task.command.split()[1:]
+            print cud.arguments
+            cud.pre_exec = [
+                            ('echo $HOME ; '
+                            'if test ! -d $HOME/ve.synapse; ' 
+                            'then virtualenv $HOME/ve.synapse ; '
+                            'source $HOME/ve.synapse/bin/activate ; '
+                            'wget -qO- https://github.com/radical-cybertools/radical.utils/archive/v0.41.1.tar.gz | tar -xzv -C $HOME/ ;'
+                            'pip install $HOME/radical.utils-0.41.1/. ; '
+                            'wget -qO- https://github.com/applicationskeleton/Skeleton/archive/feature/task_flops.tar.gz | tar -xzv -C $HOME/ ; '
+                            'pip install $HOME/Skeleton-feature-task_flops/. ; '
+                            'wget -qO- https://github.com/radical-cybertools/radical.synapse/archive/v0.44.tar.gz | tar -xzv -C $HOME/ ; '
+                            'pip install $HOME/radical.synapse-0.44/. ; '
+                            'else source $HOME/ve.synapse/bin/activate ; '
+                            'fi ; ')
+                            ]
 
             # Introduce heterogeneity in the skeleton command line.
-            cud.arguments[1] = str(cud.cores)
+#            cud.arguments[1] = str(cud.cores)
 
-            cud.pre_exec = list()
+#            cud.pre_exec = list()
 
             # Create description of input file(s) when included in the skeleton
             # description.
-            if int(task.command.split()[6]) > 0:
 
+#            if int(task.command.split()[6]) > 0:
+            if int(task.command.split()[7]) > 0:
                 cud.input_staging = list()
                 iodirs = task.command.split()[9:-1]
                 odir = iodirs[-1].split('/')[0]
@@ -410,8 +433,8 @@ def derive_cu_descriptions(cfg, run, workload):
 
             # Create description of output file(s) when included in the skeleton
             # description.
-            if int(task.command.split()[7]) > 0:
-
+#            if int(task.command.split()[7]) > 0:
+            if int(task.command.split()[8]) > 0:
                 cud.output_staging = list()
 
                 iodirs = task.command.split()[9:-1]
@@ -476,7 +499,7 @@ def unit_state_change_cb(cu, state, run):
         resource = None
 
         for pilot in run['pilots']:
-            if pilot.uid == cu.pilot_id:
+            if pilot.uid == cu.pilot:
                 resource = pilot.resource
                 break
 
@@ -487,7 +510,7 @@ def unit_state_change_cb(cu, state, run):
 
             print >> run['log'], message
 
-        elif not cu.pilot_id:
+        elif not cu.pilot:
 
             message = "%s CU    %-20s (%s) is %-25s on %s" % (
                 timestamp(), cu.name, cu.uid, state, resource)
@@ -497,7 +520,7 @@ def unit_state_change_cb(cu, state, run):
         else:
 
             message = "%s CU    %-20s (%s) is %-25s on %-14s (%s)" % (
-                timestamp(), cu.name, cu.uid, state, resource, cu.pilot_id)
+                timestamp(), cu.name, cu.uid, state, resource, cu.pilot)
 
             print >> run['log'], message
 
@@ -550,7 +573,9 @@ def execute_workload(cfg, run):
         # SESSION
         # -----------------------------------------------------------------
         # Create session in Radical Pilot for this run.
-        session           = rp.Session(database_url=cfg['mongodb'])
+
+#        session           = rp.Session(database_url=cfg['mongodb'])
+        session           = rp.Session(dburl=cfg['mongodb'])
         run['session_id'] = session.uid
 
         record_run_session(run)
@@ -650,9 +675,8 @@ def execute_workload(cfg, run):
 
         # UNIT MANAGERS
         # ------------------------------------------------------------------
-        scheduler = {'SCHED_BACKFILLING'      : rp.SCHED_BACKFILLING,
-                     'SCHED_ROUND_ROBIN'      : rp.SCHED_ROUND_ROBIN,
-                     'SCHED_DIRECT_SUBMISSION': rp.SCHED_DIRECT_SUBMISSION
+        scheduler = {'SCHED_BACKFILLING'      : rp.umgr.scheduler.SCHEDULER_BACKFILLING,
+                     'SCHED_ROUND_ROBIN'      : rp.umgr.scheduler.SCHEDULER_ROUND_ROBIN
                     }[strategy['inference']['rp_scheduler']]
 
         umgr = rp.UnitManager(session=session, scheduler=scheduler)
@@ -706,7 +730,6 @@ def execute_workload(cfg, run):
         # exception
         record_run_state(run)
         session.close(cleanup=False, terminate=True)
-
         email_report(cfg, run)
 
 

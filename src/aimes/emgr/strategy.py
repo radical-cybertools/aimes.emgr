@@ -65,8 +65,8 @@ def derive_execution_stategy_skeleton(cfg, workload, resources, run):
     if len(strategy['inference']['target_resources']) > 1:
         strategy['inference']['rp_scheduler'] = 'SCHED_BACKFILLING'
     else:
-        strategy['inference']['rp_scheduler'] = 'SCHED_DIRECT_SUBMISSION'
-
+        #strategy['inference']['rp_scheduler'] = 'SCHED_DIRECT_SUBMISSION'
+        strategy['inference']['rp_scheduler'] = 'SCHED_ROUND_ROBIN'
     # TIME COMPONENTS OF EACH PILOT WALLTIME:
     #
     # - COMPUTE TIME: the time taken by the tasks of each single stage of the
@@ -164,7 +164,7 @@ def derive_execution_strategy_skeleton_osg(cfg, workload, resources, run):
                 #   Checking for unique values for requested walltimes on OSG
                 if resource not in osg_walltime:
                     osg_walltime[resource] = cfg['bundle']['resources']['unsupported'][resource]['walltime']
-                #   Checking for unique values of cores requeted on OSG
+                #   Checking for unique values of cores requested on OSG
                 if resource not in osg_cores:
                     osg_cores[resource] = cfg['bundle']['resources']['unsupported'][resource]['cores']
                 for i in range(cfg['bundle']['resources']['unsupported'][resource]['num_pilots']):

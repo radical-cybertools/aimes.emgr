@@ -28,8 +28,10 @@ def write_skeleton_conf(cfg, scale, cores, uniformity, fout):
         sys.exit(1)
 
     if uniformity == 'uniform':
+#        substitutes['UNIFORMITY_DURATION'] = "%s %s" % \
+#            (uniformity, cfg['skeleton_task_duration']['max'])
         substitutes['UNIFORMITY_DURATION'] = "%s %s" % \
-            (uniformity, cfg['skeleton_task_duration']['max'])
+            (uniformity, cfg['skeleton_task_duration']['flops']) 
 
     # TODO: Calculate stdev and avg.
     elif uniformity == 'gauss':
