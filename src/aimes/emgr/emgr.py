@@ -575,7 +575,7 @@ def execute_workload(cfg, run):
         # Create session in Radical Pilot for this run.
 
 #        session           = rp.Session(database_url=cfg['mongodb'])
-        session           = rp.Session(database_url=cfg['mongodb'])
+        session           = rp.Session(dburl=cfg['mongodb'])
         run['session_id'] = session.uid
 
         record_run_session(run)
