@@ -375,6 +375,9 @@ def derive_cu_descriptions(cfg, run, workload):
             task.command = task_command
             cud = rp.ComputeUnitDescription()
 
+            # TODO: move this to a configurable parameter.
+            cu.restartable = True
+            
             # Introduce heterogeneity in #cores of the workload. It assumes
             # equal number of tasks for each core size. The number of tasks is
             # derived from the scale of the workload.
