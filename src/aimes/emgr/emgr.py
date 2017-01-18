@@ -375,9 +375,6 @@ def derive_cu_descriptions(cfg, run, workload):
             task.command = task_command
             cud = rp.ComputeUnitDescription()
 
-            # TODO: move this to a configurable parameter.
-            cud.restartable = True
-            
             # Introduce heterogeneity in #cores of the workload. It assumes
             # equal number of tasks for each core size. The number of tasks is
             # derived from the scale of the workload.
@@ -478,12 +475,29 @@ def pilot_state_cb(pilot, state, run):
     # Mitigate the erroneous management of the pilot state from the RP
     # back-end. In some conditions, the callback is called when the state of
     # the pilot is not available even if it should be.
-    if pilot:
+    if not pilot:
+        return
 
-        message = "%s Pilot %-34s is %-25s on %s" % (
-            timestamp(), pilot.uid, state, pilot.resource)
+    pid = pilot.uid
 
-        print >> run['log'], message
+    message = "%s Pilot %-34s is %-25s on %s" % (
+        timestamp(), pid, state, pilot.resource)
+
+    print >> run['log'], message
+
+    if pid not in run['pilot_ids']:
+        print >> run['log'], "%s Pilot %-34s is %-25s on %s" % (
+                             timestamp(), pid, 'unknown', pilot.resource)
+        return
+
+    if state in [rp.DONE, rp.FAILED, rp.CANCELED]:
+        print >> run['log'], "%s Pilot %-34s is %-25s on %s" % (
+                             timestamp(), pid, 'final', pilot.resource)
+        run['final_pilot_ids'].add(pid)
+
+    if len(run['final_pilot_ids']) == len(run['pilot_ids']):
+        print >> run['log'], 'all pilots are final - terminate'
+        sys.exit()
 
 
 # -----------------------------------------------------------------------------
@@ -650,6 +664,8 @@ def execute_workload(cfg, run):
         pmgr = rp.PilotManager(session=session)
 
         run['pilot_manager_id'] = pmgr.uid
+        run['pilot_ids']        = list()  # IDs of pilots we need to track
+        run['final_pilot_ids']  = set()   # IDs of pilot in final state
 
         pmgr.register_callback(pilot_state_cb, cb_data=run)
 
@@ -807,6 +823,8 @@ def execute_swift_workload(cfg, run, swift_workload, swift_cb=None):
         pmgr = rp.PilotManager(session=session)
 
         run['pilot_manager_id'] = pmgr.uid
+        run['pilot_ids']        = list()  # IDs of pilots we need to track
+        run['final_pilot_ids']  = set()   # IDs of pilot in final state
 
         pmgr.register_callback(pilot_state_cb, cb_data=run)
 
