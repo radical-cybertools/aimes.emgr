@@ -485,15 +485,23 @@ def pilot_state_cb(pilot, state, run):
 
     print >> run['log'], message
 
-    if pid not in run['pilot_ids']:
-        print >> run['log'], "%s Pilot %-34s is %-25s on %s" % (
-                             timestamp(), pid, 'unknown', pilot.resource)
-        return
-
+    # we assume that all pilots, for which we get callbacks, are created by 
+    # this emgr, so we can safely check if the pilot is final, and record it.
     if state in [rp.DONE, rp.FAILED, rp.CANCELED]:
         print >> run['log'], "%s Pilot %-34s is %-25s on %s" % (
                              timestamp(), pid, 'final', pilot.resource)
         run['final_pilot_ids'].add(pid)
+
+    # if we otherwise don't know about any pilots, we are done with checking
+    if not run.get('pilot_ids'):
+        print >> run['log'], "%s Pilot %-34s is %-25s on %s (no pilots)" % (
+                             timestamp(), pid, 'unknown', pilot.resource)
+        return
+
+    if pid not in run['pilot_ids']:
+        print >> run['log'], "%s Pilot %-34s is %-25s on %s" % (
+                             timestamp(), pid, 'unknown', pilot.resource)
+        return
 
     if len(run['final_pilot_ids']) == len(run['pilot_ids']):
         print >> run['log'], 'all pilots are final - terminate'
@@ -664,6 +672,10 @@ def execute_workload(cfg, run):
         pmgr = rp.PilotManager(session=session)
 
         run['pilot_manager_id'] = pmgr.uid
+        
+        # run['pilots']           = list()  # the pilots we need to keep track of
+        # run['final_pilots']     = list()  # the pilot IDs for final ones
+        
         run['pilot_ids']        = list()  # IDs of pilots we need to track
         run['final_pilot_ids']  = set()   # IDs of pilot in final state
 
@@ -689,8 +701,8 @@ def execute_workload(cfg, run):
 
         # PILOT SUBMISSIONS
         # ------------------------------------------------------------------
-        run['pilots']    = pmgr.submit_pilots(run['pdescs'])
-        run['pilot_ids'] = [(p.uid, p.resource) for p in run['pilots']]
+        run['pilots']   += pmgr.submit_pilots(run['pdescs'])
+        run['pilot_ids'] = [p.uid for p in run['pilots']]
 
         # UNIT MANAGERS
         # ------------------------------------------------------------------
@@ -702,7 +714,7 @@ def execute_workload(cfg, run):
 
         run['unit_manager_id'] = umgr.uid
 
-        umgr.add_pilots(run['pilots'])
+        umgr.add_pilots(run['pilots_ids'])
 
         umgr.register_callback(wait_queue_size_cb, rp.WAIT_QUEUE_SIZE,
                                cb_data=run)
@@ -823,6 +835,10 @@ def execute_swift_workload(cfg, run, swift_workload, swift_cb=None):
         pmgr = rp.PilotManager(session=session)
 
         run['pilot_manager_id'] = pmgr.uid
+        
+        # run['pilots']           = list()  # the pilots we need to keep track of
+        # run['final_pilots']     = list()  # the pilot IDs for final ones
+        
         run['pilot_ids']        = list()  # IDs of pilots we need to track
         run['final_pilot_ids']  = set()   # IDs of pilot in final state
 
@@ -842,8 +858,8 @@ def execute_swift_workload(cfg, run, swift_workload, swift_cb=None):
 
         # PILOT SUBMISSIONS
         # ------------------------------------------------------------------
-        run['pilots']    = pmgr.submit_pilots(run['pdescs'])
-        run['pilot_ids'] = [(p.uid, p.resource) for p in run['pilots']]
+        run['pilots']   += pmgr.submit_pilots(run['pdescs'])
+        run['pilot_ids'] = [p.uid for p in run['pilots']]
 
         # UNIT MANAGERS
         # ------------------------------------------------------------------
