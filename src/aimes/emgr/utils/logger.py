@@ -67,8 +67,8 @@ def log_rp(run):
     print >> f, "Unit manager ID         : %s" % run['unit_manager_id']
 
     # Pilots.
-    for pilot, resource in run['pilot_ids']:
-        print >> f, "Pilot ID/resource : %s %s" % (pilot, resource)
+    for pilot in run['pilots']:
+        print >> f, "Pilot ID/resource : %s %s" % (pilot.uid, pilot.resource)
 
     f.flush()
     os.fsync(f)
