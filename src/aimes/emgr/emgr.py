@@ -676,8 +676,9 @@ def execute_workload(cfg, run):
         # run['pilots']           = list()  # the pilots we need to keep track of
         # run['final_pilots']     = list()  # the pilot IDs for final ones
         
-        run['pilot_ids']        = list()  # IDs of pilots we need to track
-        run['final_pilot_ids']  = set()   # IDs of pilot in final state
+        run['pilots']           = list()  # instances of pilots we need to track
+        run['pilot_ids']        = list()  # IDs       of pilots we need to track
+        run['final_pilot_ids']  = set()   # IDs       of pilot in final state
 
         pmgr.register_callback(pilot_state_cb, cb_data=run)
 
@@ -839,8 +840,9 @@ def execute_swift_workload(cfg, run, swift_workload, swift_cb=None):
         # run['pilots']           = list()  # the pilots we need to keep track of
         # run['final_pilots']     = list()  # the pilot IDs for final ones
         
-        run['pilot_ids']        = list()  # IDs of pilots we need to track
-        run['final_pilot_ids']  = set()   # IDs of pilot in final state
+        run['pilots']           = list()  # instances of pilots we need to track
+        run['pilot_ids']        = list()  # IDs       of pilots we need to track
+        run['final_pilot_ids']  = set()   # IDs       of pilot in final state
 
         pmgr.register_callback(pilot_state_cb, cb_data=run)
 
