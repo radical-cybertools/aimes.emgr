@@ -715,7 +715,7 @@ def execute_workload(cfg, run):
 
         run['unit_manager_id'] = umgr.uid
 
-        umgr.add_pilots(run['pilot_ids'])
+        umgr.add_pilots(run['pilots'])
 
         umgr.register_callback(wait_queue_size_cb, rp.WAIT_QUEUE_SIZE,
                                cb_data=run)
